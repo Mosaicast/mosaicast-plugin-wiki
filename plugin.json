@@ -1,0 +1,77 @@
+{
+  "id": "wiki",
+  "version": "0.1.0",
+  "platformApi": "0.7.1",
+  "name": "Wiki",
+  "backend": {
+    "basePath": "/api/plugins/wiki",
+    "extensions": ["dev.mosaicast.plugin.wiki.WikiPlugin"]
+  },
+  "frontend": {
+    "entry": "wiki.es.js",
+    "elements": ["wiki-page", "wiki-site-card", "wiki-episode-mentions"]
+  },
+  "slots": [
+    { "scope": "site",    "element": "wiki-page",            "placement": "page",    "visibleTo": "anonymous", "order": 100 },
+    { "scope": "site",    "element": "wiki-site-card",       "placement": "site",    "visibleTo": "anonymous", "order": 200 },
+    { "scope": "episode", "element": "wiki-episode-mentions", "placement": "main",   "visibleTo": "anonymous", "order": 200 }
+  ],
+  "storage": {
+    "schema": {
+      "page": {
+        "slug": "string:indexed:unique",
+        "title": "string",
+        "summary": "text",
+        "markdown": "text",
+        "searchText": "text:fulltext",
+        "tags": "string:indexed",
+        "status": "string:indexed",
+        "createdAt": "timestamp",
+        "updatedAt": "timestamp:indexed",
+        "updatedBy": "string",
+        "revisionNo": "integer"
+      },
+      "revision": {
+        "pageSlug": "string:indexed",
+        "revisionNo": "integer",
+        "title": "string",
+        "markdown": "text",
+        "comment": "string",
+        "author": "string",
+        "createdAt": "timestamp:indexed"
+      },
+      "link": {
+        "fromSlug": "string:indexed",
+        "toSlug": "string:indexed",
+        "kind": "string:indexed",
+        "label": "string"
+      },
+      "source": {
+        "pageSlug": "string:indexed",
+        "label": "string",
+        "url": "text",
+        "note": "text",
+        "accessedAt": "timestamp",
+        "position": "integer"
+      },
+      "media": {
+        "pageSlug": "string:indexed",
+        "url": "text",
+        "kind": "string:indexed",
+        "provider": "string:indexed",
+        "caption": "text",
+        "position": "integer"
+      }
+    }
+  },
+  "data": {
+    "readableBy": "anonymous",
+    "writableBy": "podcaster",
+    "backendOwned": ["index", "episodes", "wikistats", "ingest:*"]
+  },
+  "config": {
+    "ingestIntervalSeconds": { "type": "number",  "default": 30,   "editableBy": "podcaster" },
+    "revisionsKept":         { "type": "number",  "default": 50,   "editableBy": "podcaster" },
+    "embedsEnabled":         { "type": "boolean", "default": true, "editableBy": "podcaster" }
+  }
+}

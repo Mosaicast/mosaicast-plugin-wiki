@@ -16,3 +16,5 @@ dist/
 *.iml
 .vscode/
 .DS_Store
+# Playwright MCP scratch output
+.playwright-mcp/

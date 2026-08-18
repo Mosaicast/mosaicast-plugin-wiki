@@ -8,14 +8,51 @@ Site plugin: a simple wiki via the declarative schema provider (pages, revisions
 
 Read both fully before writing code. Work in plan mode first.
 
+### `docs/BRIEF.md` is stale — known corrections
+It predates SDK 0.4.0 and is a read-only spec, so the corrections live here instead of in it. Where it
+disagrees with the SDK working tree or `mosaicast-plugin-sample`, the latter win.
+- `platformApi` is **`0.7.1`** (exact `major.minor` match; the docs' `"1.x"` does not even parse).
+- Its `site / main` slot **renders nowhere** — `main` is the *episode page body*. This plugin uses
+  `placement: "page"` (scope `site`, required or `/p/wiki/*` is a real 404) plus `placement: "site"`.
+  `placement: "admin"` also validates but renders nowhere, so podcaster tooling lives at `/p/wiki/_admin`.
+- It has no `data` block. Absent, `readableBy` defaults to the **write** floor and anonymous reads 403 —
+  against its own DoD. `readableBy: "anonymous"` is declared explicitly.
+- Consent is `consent.services[]`; its `{ categories, externalSources }` shape is rejected since 0.4.0.
+
+### Platform gaps this plugin is designed around
+- **No blob/upload surface for plugins** ([core#81](https://github.com/Mosaicast/mosaicast-core/issues/81)) —
+  media is external URLs only; the `media` entity gains an `uploadRef` column additively when it lands.
+- **No timestamped episode links** ([core#82](https://github.com/Mosaicast/mosaicast-core/issues/82)) —
+  a page can cite an episode, but not a moment in one.
+- **No request-time backend hook** (v1 contract, ARCHITECTURE §7.6) — hence the draft/ingest write path.
+
 ## Tech stack
 Java 21 (Gradle, PF4J extension) · React + Vite (Web Component)
 
 ## Commands
 ```
-./build.sh        # -> dist/
-cd backend && ./gradlew test  ;  cd ../frontend && npm test
+./build.sh                                      # -> dist/ (jar + assets/wiki.es.js + plugin.json)
+cd backend  && ./gradlew test
+cd frontend && npm test && npm run typecheck    # Vite does not type-check; tsc is what enforces it
 ```
+
+## Live testing (do this every phase)
+```
+./build.sh && rm -rf ../mosaicast-core/plugins/wiki && cp -r dist ../mosaicast-core/plugins/wiki
+cd ../mosaicast-core && dev/screenshots.sh up   # :8081, fleeting PG :5433, sample feed seeded
+#   dev-login: POST /api/auth/dev-login?role=podcaster|fan|admin (prime /api/meta, send X-XSRF-TOKEN)
+dev/screenshots.sh down
+```
+Disposable and seeded only with the fictional sample feed — seeding and deleting wiki data there is free.
+Core loads plugins **at startup only**: a rebuilt backend needs a restart (a rebuilt bundle does not).
+Capture light + dark at 375×667, 768×1024, 1280×800 into `assets/screenshots/`; put them in the PR.
+
+## Storage model (why two stores)
+`schema` = read model (`plugin_wiki_*`, queried read-only from the frontend via `ctx.schema`).
+Doc store = write channel: the editor writes `draft:<slug>`, the backend ingests on its schedule. **Saves
+are eventually consistent** — surface that in the UI, never paper over it. Backend-owned keys (`index`,
+`episodes`, `wikistats`, `ingest:*`) are written in `register()` **and** on the tick. Never reserve
+`draft:*`/`delete:*` — the client writes those and reserving them would 403 the editor.
 
 ## Conventions (binding)
 - Java packages `dev.mosaicast.*`; npm scope `@mosaicast`.
