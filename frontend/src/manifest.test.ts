@@ -48,6 +48,20 @@ describe('plugin.json', () => {
     }
   });
 
+  it('never asks to store SVG, which is a script container wearing an image extension', () => {
+    // Rejected at load, and an operator cannot re-enable it either — it is filtered out of the install's
+    // allow-list too. Asserted here so a well-meaning "support vector diagrams" edit fails in tests.
+    expect(manifest.blobs.mimeTypes).not.toContain('image/svg+xml');
+  });
+
+  it('declares positive blob limits, since a non-positive one is rejected at load', () => {
+    expect(manifest.blobs.maxFileBytes).toBeGreaterThan(0);
+    expect(manifest.blobs.quotaBytes).toBeGreaterThan(0);
+    expect(manifest.blobs.maxFileBytes).toBeLessThanOrEqual(manifest.blobs.quotaBytes);
+    // A present-but-empty list is rejected too: omit the field to take the operator's list instead.
+    expect(manifest.blobs.mimeTypes.length).toBeGreaterThan(0);
+  });
+
   it('declares a fulltext field, which is the whole reason for a schema', () => {
     const fields = Object.values(manifest.storage.schema.page) as string[];
     expect(fields.some((type) => type.includes(':fulltext'))).toBe(true);

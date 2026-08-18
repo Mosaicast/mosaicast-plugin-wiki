@@ -11,7 +11,8 @@ Read both fully before writing code. Work in plan mode first.
 ### `docs/BRIEF.md` is stale — known corrections
 It predates SDK 0.4.0 and is a read-only spec, so the corrections live here instead of in it. Where it
 disagrees with the SDK working tree or `mosaicast-plugin-sample`, the latter win.
-- `platformApi` is **`0.7.1`** (exact `major.minor` match; the docs' `"1.x"` does not even parse).
+- `platformApi` is **`0.8.0`** (exact `major.minor` match; the docs' `"1.x"` does not even parse). Pin the
+  same string in all four places — `plugin.json`, both gradle coordinates, `package.json`.
 - Its `site / main` slot **renders nowhere** — `main` is the *episode page body*. This plugin uses
   `placement: "page"` (scope `site`, required or `/p/wiki/*` is a real 404) plus `placement: "site"`.
   `placement: "admin"` also validates but renders nowhere, so podcaster tooling lives at `/p/wiki/_admin`.
@@ -19,11 +20,18 @@ disagrees with the SDK working tree or `mosaicast-plugin-sample`, the latter win
   against its own DoD. `readableBy: "anonymous"` is declared explicitly.
 - Consent is `consent.services[]`; its `{ categories, externalSources }` shape is rejected since 0.4.0.
 
-### Platform gaps this plugin is designed around
-- **No blob/upload surface for plugins** ([core#81](https://github.com/Mosaicast/mosaicast-core/issues/81)) —
-  media is external URLs only; the `media` entity gains an `uploadRef` column additively when it lands.
-- **No timestamped episode links** ([core#82](https://github.com/Mosaicast/mosaicast-core/issues/82)) —
-  a page can cite an episode, but not a moment in one.
+### Platform surfaces this plugin depends on
+Both gaps this repo filed are **closed** — [core#81](https://github.com/Mosaicast/mosaicast-core/issues/81)
+(file storage) and [core#82](https://github.com/Mosaicast/mosaicast-core/issues/82) (timestamped episode
+links) shipped in SDK 0.8.0 / core 0.6.11+.
+- **`ctx.blobs`** (manifest `blobs` block; `null` without one). **Store the `ref`, never the URL** —
+  `urlFor(ref)` is derived at render time. **Nothing collects orphans**: the ingest tick deletes what the
+  wiki stops pointing at. `quota()` is the only honest source for the effective limits (an admin grant
+  *replaces* the manifest's ask). **SVG is never storable.** Uploads are served same-origin under `/api/`,
+  so they need no CSP host and make no consent decision — prefer them to external URLs.
+- **`ctx.links.episode(slug, { t })`** for citing a moment; `ctx.links.feed(slug, …)`. Never hardcode
+  `/episodes/…` or `/feeds/…`.
+- Core 0.6.12 ships its **own share dialog** on episodes, feeds and the site panel — do not build a second.
 - **No request-time backend hook** (v1 contract, ARCHITECTURE §7.6) — hence the draft/ingest write path.
 
 ## Tech stack
@@ -46,6 +54,16 @@ dev/screenshots.sh down
 Disposable and seeded only with the fictional sample feed — seeding and deleting wiki data there is free.
 Core loads plugins **at startup only**: a rebuilt backend needs a restart (a rebuilt bundle does not).
 Capture light + dark at 375×667, 768×1024, 1280×800 into `assets/screenshots/`; put them in the PR.
+
+## npm lockfile gotcha (recurs on every dependency bump)
+npm 11.16.0 records esbuild's 27 optional platform binaries as `extraneous`, so `npm ci` tries to install
+netbsd-arm64 on an x64 runner and fails with EBADPLATFORM. npm 10 omits the entries entirely, which npm 11
+then rejects as out of sync. After any dependency change, regenerate and correct:
+```
+rm -rf node_modules package-lock.json && npm install --ignore-scripts
+# then rewrite each `"extraneous": true` to `"dev": true, "optional": true`
+npm ci && npx npm@10 ci     # both must pass before pushing
+```
 
 ## Storage model (why two stores)
 `schema` = read model (`plugin_wiki_*`, queried read-only from the frontend via `ctx.schema`).

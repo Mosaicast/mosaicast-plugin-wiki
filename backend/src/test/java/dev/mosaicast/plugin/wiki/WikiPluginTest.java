@@ -38,7 +38,7 @@ class WikiPluginTest {
                         "author", "createdAt")
                 .withEntity("link", "fromSlug", "toSlug", "kind", "label")
                 .withEntity("source", "pageSlug", "label", "url", "note", "accessedAt", "position")
-                .withEntity("media", "pageSlug", "url", "kind", "provider", "caption", "position");
+                .withEntity("media", "pageSlug", "url", "kind", "provider", "caption", "position", "uploadRef");
     }
 
 

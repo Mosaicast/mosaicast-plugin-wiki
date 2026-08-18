@@ -32,7 +32,7 @@ Core loads plugins **at startup only**, so every rebuild needs a restart.
 ```
 
 ## How it stores things
-Two stores, on purpose:
+Three stores, each for what it is good at:
 
 - **Schema** (`plugin_wiki_page`, `_revision`, `_link`, `_source`, `_media`) — the read model. The platform
   provisions the tables from `plugin.json`; the plugin never writes DDL. The frontend queries them
@@ -40,6 +40,8 @@ Two stores, on purpose:
 - **Doc store** — the write channel. There are no schema writes over HTTP, so the editor saves a
   `draft:<slug>` document and the backend ingests it into the tables on its schedule. **A save is therefore
   eventually consistent**, and the UI says so rather than pretending otherwise.
+- **Blobs** (`ctx.blobs`) — uploaded images and documents, served same-origin under `/api/`, so they need no
+  CSP host and make no consent decision. A row stores the file's **ref**, never a URL. SVG is never stored.
 
 ## Contributing
 Contributions welcome — see [`CONTRIBUTING.md`](CONTRIBUTING.md). In short: `git commit -s` (DCO, required), SPDX header in new files, add tests.

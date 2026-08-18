@@ -26,6 +26,33 @@ export interface PageRow {
   revisionNo: number | null;
 }
 
+/**
+ * A row of the `media` entity: one image, document or embed a page shows.
+ *
+ * Exactly one of the two locations is set. `uploadRef` names a file this plugin stores through
+ * `ctx.blobs`; **the ref is the identity and the URL is derived** from it with `ctx.blobs.urlFor(ref)` at
+ * render time, because a stored URL is a copy of a decision the host is entitled to change. `url` is for
+ * media that lives somewhere else entirely.
+ *
+ * An uploaded file is served same-origin under `/api/`, so it needs no CSP host and makes no consent
+ * decision — which an external URL cannot say, and which is the reason to prefer uploading.
+ *
+ * Nothing collects orphans: a file outlives the row that named it, so the backend deletes what the wiki
+ * stops pointing at.
+ */
+export interface MediaRow {
+  id: number;
+  pageSlug: string;
+  /** Absolute URL of external media; empty when this row is an upload. */
+  url: string | null;
+  kind: 'image' | 'audio' | 'video' | 'document' | 'embed';
+  provider: string | null;
+  caption: string | null;
+  position: number | null;
+  /** Blob ref of an uploaded file; empty when this row is external. Never store a URL here. */
+  uploadRef: string | null;
+}
+
 /** A row of the `link` entity: one edge out of a page, to a wiki page, an episode or the open web. */
 export interface LinkRow {
   id: number;
