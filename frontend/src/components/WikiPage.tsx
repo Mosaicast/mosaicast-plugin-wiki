@@ -1,35 +1,43 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // SPDX-FileCopyrightText: 2026 The Mosaicast Authors
 
-import { useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useState, type FormEvent, type MouseEvent } from 'react';
 import type { PluginContext } from '@mosaicast/plugin-sdk';
 import { makeI18n } from '../i18n';
 import { parseRoute, routeHref, routePath, type WikiRoute } from '../routes';
 import { KEY_INDEX, type PageSummary } from '../types';
 import { useSiteDoc } from './useDoc';
+import { PageView } from './PageView';
+import { SearchView, TagView } from './SearchView';
 import { WIKI_CSS } from './styles';
+
+/** How many pages the home view lists as "recently updated" before the full list takes over. */
+const RECENT_LIMIT = 8;
 
 /**
  * The wiki itself, mounted in the `page` placement behind `/p/wiki/*`.
  *
- * A `page` slot is what makes plugin content linkable at all — without one the host answers that URL with a
- * real 404 rather than soft-404ing a page nobody opted into. The subpath below the prefix arrives as
- * `ctx.route.path` and is re-handed on every navigation (the shell reassigns `ctx` rather than remounting),
- * so this component reads it at render time and never subscribes.
+ * A `page` slot is what makes plugin content linkable at all — without one the host answers that URL with
+ * a real 404 rather than soft-404ing a page nobody opted into. The subpath below the prefix arrives as
+ * `ctx.route.path` and is re-handed on every navigation (the shell reassigns `ctx` rather than remounting
+ * the element), so this reads the route at render time and never subscribes.
  *
- * Phase 1 renders the home view. The reader, editor, history and dashboard views land in later phases;
- * every route already resolves, so an early deep link degrades to a stated empty state, never a blank tile.
+ * Every view resolves, including the ones phase 3 fills in, so an early deep link degrades to a stated
+ * empty state rather than a blank tile.
  */
 export function WikiPage({ ctx }: { ctx: PluginContext }) {
   const i18n = useMemo(() => makeI18n(ctx.locale), [ctx]);
+  useEffect(() => () => i18n.dispose(), [i18n]);
+
   const route = parseRoute(ctx.route.path);
   const index = useSiteDoc<Record<string, PageSummary>>(ctx, KEY_INDEX);
-  const pages = Object.entries(index.data ?? {});
+  const pages = index.data ?? {};
 
   /** Navigate inside our own subtree. Links keep their `href`; this only takes over the plain click. */
-  const go = (target: WikiRoute) => (event: { preventDefault(): void; metaKey?: boolean; ctrlKey?: boolean }) => {
-    if (event.metaKey || event.ctrlKey) {
-      return;   // let the browser open a new tab, as the user asked
+  const go = (target: WikiRoute) => (event: MouseEvent | { preventDefault(): void; metaKey?: boolean; ctrlKey?: boolean }) => {
+    const modified = 'metaKey' in event && (event.metaKey || event.ctrlKey);
+    if (modified) {
+      return;   // let the browser open a new tab, as the visitor asked
     }
     event.preventDefault();
     ctx.route.navigate(routePath(target));
@@ -40,44 +48,94 @@ export function WikiPage({ ctx }: { ctx: PluginContext }) {
       <style>{WIKI_CSS}</style>
       <div className="wiki wiki--page">
         <div className="wiki__bar">
+          <a className="wiki__crumbs" href={routeHref({ view: 'home' })} onClick={go({ view: 'home' })}>
+            {i18n.t('wiki')}
+          </a>
           <SearchBox ctx={ctx} placeholder={i18n.t('search.placeholder')} submit={i18n.t('search.submit')} />
         </div>
-
-        <h1 className="wiki__title">{i18n.t('home.title')}</h1>
 
         {index.loading && <p className="wiki__meta">{i18n.t('loading')}</p>}
         {index.failed && <p className="wiki__error">{i18n.t('error')}</p>}
 
-        {!index.loading && !index.failed && pages.length === 0 && (
+        {!index.loading && !index.failed && route.view === 'home' && (
+          <HomeView i18n={i18n} index={pages} go={go} />
+        )}
+        {!index.loading && route.view === 'page' && (
+          <PageView ctx={ctx} i18n={i18n} slug={route.slug} index={pages} go={go} />
+        )}
+        {!index.loading && route.view === 'search' && (
+          <SearchView ctx={ctx} i18n={i18n} query={route.query} index={pages} go={go} />
+        )}
+        {!index.loading && route.view === 'tag' && (
+          <TagView i18n={i18n} tag={route.tag} index={pages} go={go} />
+        )}
+        {!index.loading && NOT_YET.includes(route.view) && (
           <div className="wiki__empty">
-            <p>{i18n.t('home.empty')}</p>
-            <p>{i18n.t('home.emptyHint')}</p>
+            <p>{i18n.t('soon')}</p>
           </div>
         )}
-
-        {pages.length > 0 && (
-          <ul className="wiki__list">
-            {pages.map(([slug, summary]) => (
-              <li className="wiki__item" key={slug}>
-                <h3>
-                  <a href={routeHref({ view: 'page', slug })} onClick={go({ view: 'page', slug })}>
-                    {summary.title || slug}
-                  </a>
-                </h3>
-                {summary.summary && <p>{summary.summary}</p>}
-              </li>
-            ))}
-          </ul>
-        )}
-
-        {route.view !== 'home' && (
-          <p className="wiki__meta">
-            <a href={routeHref({ view: 'home' })} onClick={go({ view: 'home' })}>
-              {i18n.t('home.title')}
-            </a>
-          </p>
-        )}
       </div>
+    </>
+  );
+}
+
+/** Views phase 3 and 4 fill in. Listed rather than defaulted, so a new route cannot land here by accident. */
+const NOT_YET: WikiRoute['view'][] = ['history', 'revision', 'edit', 'new', 'admin'];
+
+function HomeView({
+  i18n,
+  index,
+  go,
+}: {
+  i18n: ReturnType<typeof makeI18n>;
+  index: Record<string, PageSummary>;
+  go(route: WikiRoute): (event: MouseEvent | React.MouseEvent) => void;
+}) {
+  const entries = Object.entries(index);
+  const recent = [...entries]
+    .sort(([, a], [, b]) => (b.updatedAt ?? '').localeCompare(a.updatedAt ?? ''))
+    .slice(0, RECENT_LIMIT);
+  const tags = [
+    ...new Set(entries.flatMap(([, summary]) => (summary.tags ?? '').split(',').filter(Boolean))),
+  ].sort();
+
+  if (entries.length === 0) {
+    return (
+      <div className="wiki__empty">
+        <p>{i18n.t('home.empty')}</p>
+        <p>{i18n.t('home.emptyHint')}</p>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <h1 className="wiki__title">{i18n.t('home.title')}</h1>
+      <p className="wiki__meta">{i18n.t('home.count', { n: String(entries.length) })}</p>
+
+      {tags.length > 0 && (
+        <div className="wiki__tags">
+          {tags.map((tag) => (
+            <a className="wiki__tag" key={tag} href={routeHref({ view: 'tag', tag })} onClick={go({ view: 'tag', tag })}>
+              {tag}
+            </a>
+          ))}
+        </div>
+      )}
+
+      <h2 className="wiki__section-title">{i18n.t('home.recent')}</h2>
+      <ul className="wiki__list">
+        {recent.map(([slug, summary]) => (
+          <li className="wiki__item" key={slug}>
+            <h3>
+              <a href={routeHref({ view: 'page', slug })} onClick={go({ view: 'page', slug })}>
+                {summary.title || slug}
+              </a>
+            </h3>
+            {summary.summary && <p>{summary.summary}</p>}
+          </li>
+        ))}
+      </ul>
     </>
   );
 }

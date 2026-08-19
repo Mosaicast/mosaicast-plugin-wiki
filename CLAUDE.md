@@ -33,6 +33,9 @@ links) shipped in SDK 0.8.0 / core 0.6.11+.
   `/episodes/…` or `/feeds/…`.
 - Core 0.6.12 ships its **own share dialog** on episodes, feeds and the site panel — do not build a second.
 - **No request-time backend hook** (v1 contract, ARCHITECTURE §7.6) — hence the draft/ingest write path.
+- **Unknown subpaths under `/p/wiki/` answer 200, not 404**
+  ([core#89](https://github.com/Mosaicast/mosaicast-core/issues/89)) — the reader renders its own
+  not-found view, but crawlers will index typos until core gains a route-existence hook.
 
 ## Tech stack
 Java 21 (Gradle, PF4J extension) · React + Vite (Web Component)
@@ -64,6 +67,18 @@ rm -rf node_modules package-lock.json && npm install --ignore-scripts
 # then rewrite each `"extraneous": true` to `"dev": true, "optional": true`
 npm ci && npx npm@10 ci     # both must pass before pushing
 ```
+
+## Page syntax (what the backend extracts and the reader renders)
+```
+[[the-kraken]]  [[the-kraken|label]]        wiki link; unresolved -> red link
+[[episode:s01e02]]  [[episode:s01e02@12:04|label]]   episode link via ctx.links.episode(slug,{t})
+![caption](blob:<ref>)                      an uploaded file, addressed by ref
+## Sources  /  ## Quellen                   extracted to `source` rows and rendered from those
+```
+`WikiMarkdown` (backend) finds these with **regexes, not a parser** — a real parser would mean a shaded
+JAR and PF4J classloading. The browser parses properly for rendering; anything the backend misses degrades
+to a missing backlink, never a broken page. The reader strips the body's own Sources section, since the
+structured rows replace it.
 
 ## Storage model (why two stores)
 `schema` = read model (`plugin_wiki_*`, queried read-only from the frontend via `ctx.schema`).
