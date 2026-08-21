@@ -62,6 +62,16 @@ export interface LinkRow {
   label: string | null;
 }
 
+/** A row of the `source` entity: one entry of a page's Sources section. */
+export interface SourceRow {
+  id: number;
+  pageSlug: string;
+  label: string | null;
+  url: string | null;
+  note: string | null;
+  position: number | null;
+}
+
 /** One page as the backend's `index` doc key summarises it. */
 export interface PageSummary {
   title: string;

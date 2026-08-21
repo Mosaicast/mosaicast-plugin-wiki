@@ -14,3 +14,6 @@ import de from '../locales/de.json';
 export function makeI18n(locale: PluginContext['locale']) {
   return createPluginI18n({ en, de }, locale);
 }
+
+/** This plugin's translator, as the components take it. */
+export type PluginI18n = ReturnType<typeof makeI18n>;
