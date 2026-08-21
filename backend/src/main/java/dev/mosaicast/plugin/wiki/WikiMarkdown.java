@@ -48,8 +48,18 @@ final class WikiMarkdown {
     private static final Pattern SOURCE_ITEM =
             Pattern.compile("(?m)^\\s*[-*]\\s+\\[([^\\]]+)]\\(([^)\\s]+)\\)\\s*(?:[—:-]\\s*(.*))?$");
 
-    /** {@code hh:mm:ss}, {@code mm:ss} or plain seconds, as a listener would write it. */
-    private static final Pattern TIMESTAMP = Pattern.compile("^(?:(\\d+):)?(\\d+):(\\d{1,2})$|^(\\d+)$");
+    // The host's `?t=` grammar (ARCHITECTURE §6.4), matched term for term against core's
+    // `frontend/src/util/timestamp.ts` and `web/TimestampParam.java`. The spec's rule -- one grammar,
+    // implemented on every side -- covers this third implementation too: a link that previews as one
+    // moment and plays another is worse than one carrying no timestamp.
+    private static final Pattern PLAIN = Pattern.compile("^\\d+$");
+    private static final Pattern MMSS = Pattern.compile("^(\\d{1,3}):([0-5]\\d)$");
+    private static final Pattern HHMMSS = Pattern.compile("^(\\d{1,2}):([0-5]\\d):([0-5]\\d)$");
+    private static final Pattern UNITS =
+            Pattern.compile("^(?:(\\d{1,6})h)?(?:(\\d{1,6})m)?(?:(\\d{1,6})s)?$");
+
+    /** The largest position a link may carry: 24 h. Longer is a typo, not an episode. */
+    private static final long MAX_SECONDS = 86_400L;
 
     /** A file this plugin stores itself, addressed by ref rather than by URL: {@code ![alt](blob:<ref>)}. */
     private static final String BLOB_PREFIX = "blob:";
@@ -212,22 +222,58 @@ final class WikiMarkdown {
     /**
      * Reads a timestamp the way a person writes one.
      *
-     * @param text {@code 1:02:03}, {@code 12:04} or {@code 754}
-     * @return the position in seconds, or {@code null} if it is not one of those
+     * @param text {@code 754}, {@code 12:04}, {@code 1:02:03}, {@code 1h02m03s} or {@code 90m}
+     * @return the position in seconds, or {@code null} when it is unreadable or out of range -- never a
+     *         guess, since a wrong moment is worse than no moment
      */
     static Long seconds(String text) {
         if (text == null) {
             return null;
         }
-        Matcher m = TIMESTAMP.matcher(text.trim());
-        if (!m.matches()) {
+        String value = text.trim().toLowerCase(Locale.ROOT);
+        if (value.isEmpty()) {
             return null;
         }
-        if (m.group(4) != null) {
-            return Long.parseLong(m.group(4));
+
+        Long seconds = null;
+        if (PLAIN.matcher(value).matches()) {
+            seconds = parseLongOrNull(value);
+        } else {
+            Matcher clock = HHMMSS.matcher(value);
+            if (clock.matches()) {
+                seconds = Long.parseLong(clock.group(1)) * 3600
+                        + Long.parseLong(clock.group(2)) * 60
+                        + Long.parseLong(clock.group(3));
+            } else {
+                Matcher shortClock = MMSS.matcher(value);
+                if (shortClock.matches()) {
+                    seconds = Long.parseLong(shortClock.group(1)) * 60 + Long.parseLong(shortClock.group(2));
+                } else {
+                    Matcher units = UNITS.matcher(value);
+                    // The unit pattern is all-optional, so it also matches "h" or "m" alone, which would
+                    // slip through as zero without this check.
+                    if (units.matches()
+                            && (units.group(1) != null || units.group(2) != null || units.group(3) != null)) {
+                        seconds = group(units, 1) * 3600 + group(units, 2) * 60 + group(units, 3);
+                    }
+                }
+            }
         }
-        long hours = m.group(1) == null ? 0 : Long.parseLong(m.group(1));
-        return hours * 3600 + Long.parseLong(m.group(2)) * 60 + Long.parseLong(m.group(3));
+
+        return seconds == null || seconds < 0 || seconds > MAX_SECONDS ? null : seconds;
+    }
+
+    private static long group(Matcher matcher, int index) {
+        return matcher.group(index) == null ? 0L : Long.parseLong(matcher.group(index));
+    }
+
+    /** Bare digits within the pattern's bound still overflow a long past 19 digits. */
+    private static Long parseLongOrNull(String value) {
+        try {
+            return Long.parseLong(value);
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
 
     private static boolean isHttp(String url) {

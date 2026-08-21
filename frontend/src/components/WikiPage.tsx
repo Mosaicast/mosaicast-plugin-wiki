@@ -10,6 +10,7 @@ import { useSiteDoc } from './useDoc';
 import { PageView } from './PageView';
 import { SearchView, TagView } from './SearchView';
 import { WIKI_CSS } from './styles';
+import { Icon } from '../icons';
 
 /** How many pages the home view lists as "recently updated" before the full list takes over. */
 const RECENT_LIMIT = 8;
@@ -117,6 +118,7 @@ function HomeView({
         <div className="wiki__tags">
           {tags.map((tag) => (
             <a className="wiki__tag" key={tag} href={routeHref({ view: 'tag', tag })} onClick={go({ view: 'tag', tag })}>
+              <Icon name="tag" />
               {tag}
             </a>
           ))}
@@ -163,6 +165,7 @@ function SearchBox({ ctx, placeholder, submit }: { ctx: PluginContext; placehold
         onChange={(event) => setTerm(event.target.value)}
       />
       <button className="wiki__btn" type="submit">
+        <Icon name="search" />
         {submit}
       </button>
     </form>

@@ -21,6 +21,28 @@ describe('WIKI_CSS', () => {
     expect(WIKI_CSS).toContain('var(--mc-accent)');
   });
 
+  it('draws host icons as a mask, never as a background image', () => {
+    // A background image bakes in the colour the artwork was drawn as; a mask takes the caller's own,
+    // so the icon re-themes with the text beside it (ARCHITECTURE §12.3).
+    expect(WIKI_CSS).toContain('mask-image: var(--mc-icon-');
+    expect(WIKI_CSS).not.toMatch(/background-image:\s*var\(--mc-icon-/);
+  });
+
+  it('gives every icon reference a blank fallback, so a missing one is not a solid square', () => {
+    // An unresolved var() makes the declaration invalid at computed-value time and mask-image reverts to
+    // its initial "none" — an unmasked element painting currentColor across its whole box.
+    for (const [, reference] of WIKI_CSS.matchAll(/mask-image:\s*([^;]+);/g)) {
+      expect(reference).toContain('var(--wiki-icon-blank)');
+    }
+    expect(WIKI_CSS).toContain('--wiki-icon-blank:');
+  });
+
+  it('never declares into the host own token namespace', () => {
+    // Defining a --mc-* property would shadow the real token for this plugin's subtree the moment core
+    // publishes one. Referencing them is the whole point; declaring them is the bug.
+    expect(WIKI_CSS).not.toMatch(/^\s*--mc-[a-z-]+\s*:/m);
+  });
+
   it('sizes the search field by width, never by height, once the bar stacks', () => {
     // In a column flex container flex-basis sizes the HEIGHT: the row layout's "flex: 1 1 16rem" made the
     // search field 16rem tall on a phone. Caught by the 375px screenshot; pinned here so it stays fixed.

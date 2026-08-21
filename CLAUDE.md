@@ -32,6 +32,23 @@ links) shipped in SDK 0.8.0 / core 0.6.11+.
 - **`ctx.links.episode(slug, { t })`** for citing a moment; `ctx.links.feed(slug, …)`. Never hardcode
   `/episodes/…` or `/feeds/…`.
 - Core 0.6.12 ships its **own share dialog** on episodes, feeds and the site panel — do not build a second.
+- **`--mc-icon-*` icons** (§12.3): the shell publishes its icon set as custom properties, which inherit
+  through the shadow boundary — no SDK import, no `platformApi` bump, no version skew. See
+  `frontend/src/icons.tsx`. Three rules, all pinned by tests: consume as a **mask** (a background image
+  bakes in a colour and ignores the theme); give every reference the **blank fallback** (an unresolved
+  `var()` reverts `mask-image` to `none`, painting a solid square); never **declare** into `--mc-*`.
+  An icon is not a word — marks never go in a translated string.
+- **Credit fields** `license`/`author`/`homepage`(/`attribution`) surface on the host's `/about` page.
+  Unvalidated and additive: **never bump `platformApi` for them**, since that check is an exact
+  `major.minor` match and a bump rejects every installed plugin.
+- **Releases publish `plugin.tgz`** (`.github/workflows/release.yml`), so an operator can install by spec:
+  `MOSAICAST_PLUGINS=Mosaicast/mosaicast-plugin-wiki@v<x>#sha256:<digest>`. The asset name is load-bearing
+  and the workflow refuses a tag that disagrees with the manifest `version`.
+- **The `?t=` grammar is shared** (§6.4). `WikiMarkdown.seconds` and `markdown.ts#parseTimestamp` are the
+  *third and fourth* implementations of core's `util/timestamp.ts` / `web/TimestampParam.java`, held to
+  the same case table: `754`, `12:04`, `1:02:03`, `1h02m03s`, `90m`; bounded fields, 24 h cap, unreadable
+  values dropped. A link that previews as one moment and plays another is worse than one with no
+  timestamp — so change all four together or none.
 - **No request-time backend hook** (v1 contract, ARCHITECTURE §7.6) — hence the draft/ingest write path.
 - **Unknown subpaths under `/p/wiki/` answer 200, not 404**
   ([core#89](https://github.com/Mosaicast/mosaicast-core/issues/89)) — the reader renders its own

@@ -11,7 +11,9 @@
  * `style-src 'unsafe-inline'` is kept by the host precisely because a runtime-constructed shadow root
  * cannot carry a nonce, so an inline `<style>` is the supported way to do this.
  */
-export const WIKI_CSS = `
+import { ICON_CSS } from '../icons';
+
+export const WIKI_CSS = ICON_CSS + `
   :host { display: block; container-type: inline-size; }
   .wiki {
     color: var(--mc-text);
@@ -45,6 +47,7 @@ export const WIKI_CSS = `
   }
   .wiki__input:focus-visible { outline: 2px solid var(--mc-accent); outline-offset: 1px; }
   .wiki__btn {
+    display: inline-flex; align-items: center; gap: .35rem;
     padding: .5rem .9rem;
     color: var(--mc-accent-contrast);
     background: var(--mc-accent);
@@ -118,7 +121,23 @@ export const WIKI_CSS = `
   .wiki__table-wrap, .wiki__body table { display: block; overflow-x: auto; max-width: 100%; }
   /* A link to a page nobody has written yet: shown as missing rather than silently dead. */
   .wiki-link--missing { color: var(--mc-text-muted); text-decoration: underline dotted; }
-  .wiki-ep::before { content: "♪"; margin-right: .3rem; opacity: .7; }
+  /* An episode citation is marked with the shell's own icon, masked so it takes the link's colour.
+     This used to be a literal note character, which rendered as whatever emoji font the visitor had. */
+  .wiki-ep::before {
+    content: "";
+    display: inline-block;
+    width: 1em; height: 1em;
+    margin-right: .25rem;
+    vertical-align: -0.125em;
+    mask-image: var(--mc-icon-music, var(--wiki-icon-blank));
+    mask-size: contain; mask-repeat: no-repeat; mask-position: center;
+    background: currentColor;
+  }
+  /* Rule 2 in icons.tsx: an unresolved var() reverts mask-image to its initial "none" and paints a solid
+     square, so every reference above needs this fallback declared somewhere it inherits from. */
+  .wiki { --wiki-icon-blank: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'/%3E"); }
+  .wiki__section h2 .wikiIcon, .wiki__toc h2 .wikiIcon { margin-right: .35rem; opacity: .75; }
+  .wiki__tag .wikiIcon { margin-right: .2rem; opacity: .7; }
   .wiki__sources { margin: 0; padding-left: 1.25rem; }
   .wiki__sources li { margin-bottom: .35rem; }
   .wiki__note { color: var(--mc-text-muted); }

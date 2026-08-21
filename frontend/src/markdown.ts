@@ -48,7 +48,18 @@ export interface RenderedPage {
 
 const WIKI_TOKEN = /\[\[([^\]|]+?)(?:\|([^\]]*))?\]\]/g;
 const BLOB_IMAGE = /!\[([^\]]*)\]\(blob:([A-Za-z0-9-]+)\)/g;
-const TIMESTAMP = /^(?:(\d+):)?(\d+):(\d{1,2})$|^(\d+)$/;
+// The host's `?t=` grammar (ARCHITECTURE §6.4), matched term for term against core's
+// `frontend/src/util/timestamp.ts` and `web/TimestampParam.java`. This is a THIRD implementation of one
+// grammar, so the spec's rule applies to it too: a link that previews as one moment and plays another is
+// worse than one carrying no timestamp. Bare seconds, the clock a player shows, and the unit form other
+// podcast apps emit.
+const PLAIN = /^\d+$/;
+const MMSS = /^(\d{1,3}):([0-5]\d)$/;
+const HHMMSS = /^(\d{1,2}):([0-5]\d):([0-5]\d)$/;
+const UNITS = /^(?:(\d{1,6})h)?(?:(\d{1,6})m)?(?:(\d{1,6})s)?$/;
+
+/** The largest position a link may carry: 24 h. Longer is a typo, not an episode. */
+const MAX_SECONDS = 86_400;
 
 /** Escapes text that is about to become part of an HTML attribute or an element's content. */
 function escapeHtml(value: string): string {
@@ -60,24 +71,40 @@ function escapeHtml(value: string): string {
 }
 
 /**
- * Reads a timestamp the way a person writes one: `1:02:03`, `12:04` or plain seconds.
+ * Reads a timestamp the way a person writes one: `754`, `12:04`, `1:02:03`, `1h02m03s` or `90m`.
  *
  * @param text the text after the `@` in an episode token
  * @returns the position in seconds, or `undefined` when it is not readable — a mangled timestamp still
  *          opens the episode rather than breaking the link
  */
 export function parseTimestamp(text: string | undefined): number | undefined {
-  if (!text) {
+  const value = text?.trim().toLowerCase();
+  if (!value) {
     return undefined;
   }
-  const m = TIMESTAMP.exec(text.trim());
-  if (!m) {
+
+  let seconds: number | undefined;
+  if (PLAIN.test(value)) {
+    seconds = Number(value);
+  } else {
+    const clock = HHMMSS.exec(value) ?? MMSS.exec(value);
+    if (clock) {
+      const parts = clock.slice(1).map(Number);
+      seconds = parts.length === 3 ? parts[0] * 3600 + parts[1] * 60 + parts[2] : parts[0] * 60 + parts[1];
+    } else {
+      const units = UNITS.exec(value);
+      // The unit pattern is all-optional, so it also matches "h" or "m" alone, which would slip through
+      // as zero without this check.
+      if (units && (units[1] || units[2] || units[3])) {
+        seconds = Number(units[1] ?? 0) * 3600 + Number(units[2] ?? 0) * 60 + Number(units[3] ?? 0);
+      }
+    }
+  }
+
+  if (seconds == null || !Number.isFinite(seconds) || seconds < 0 || seconds > MAX_SECONDS) {
     return undefined;
   }
-  if (m[4] != null) {
-    return Number(m[4]);
-  }
-  return Number(m[1] ?? 0) * 3600 + Number(m[2]) * 60 + Number(m[3]);
+  return Math.floor(seconds);
 }
 
 /** Formats seconds the way the token was written, for the link's own label. */

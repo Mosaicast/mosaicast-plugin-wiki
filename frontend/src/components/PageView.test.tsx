@@ -13,7 +13,8 @@ const KRAKEN = {
   slug: 'the-kraken',
   title: 'The Kraken',
   summary: 'A very large squid.',
-  markdown: '## Sightings\n\nSeen off [[deep-sea|the deep]] and in [[episode:s01e02@12:04|the bit]].',
+  markdown:
+    '## Sightings\n\nSeen off [[deep-sea|the deep]] and in [[episode:s01e02@12:04|the bit]].\n\n## Size\n\nUnmeasured.',
   // The backend maintains this as title + tags + summary + body, because `search` takes ONE field.
   searchText: 'The Kraken\nlore,sea\nA very large squid.\nSeen off the deep.',
   tags: 'lore,sea',
@@ -159,6 +160,23 @@ describe('<WikiPage> — reader', () => {
     expect(items[0]).toContain('Wikipedia');
     expect(items[0]).toContain('accessed 2026-08');
     expect(items[1]).toContain('A book');
+  });
+
+  it('names the rendered Sources section in the contents list', async () => {
+    // The body's own heading is stripped in favour of the extracted rows, so without this the contents
+    // list would point at less than the reader can actually see.
+    const ctx = ctxFor('the-kraken', {
+      source: [
+        { id: 1, pageSlug: 'the-kraken', label: 'Wikipedia', url: 'https://en.wikipedia.org/wiki/Kraken', note: null, position: 0 },
+      ],
+    });
+
+    await render(ctx);
+
+    const toc = host.querySelector('.wiki__toc');
+    expect(toc?.textContent).toContain('Sources');
+    expect(toc?.querySelector('a[href="#sources"]')).not.toBeNull();
+    expect(host.querySelector('h2#sources')).not.toBeNull();
   });
 
   it('shows the tags as links into the tag view', async () => {

@@ -7,6 +7,10 @@ import { renderPage, stripSourcesSection, type TocEntry } from '../markdown';
 import { routeHref, routePath, type WikiRoute } from '../routes';
 import type { LinkRow, PageRow, PageSummary, SourceRow } from '../types';
 import type { PluginI18n } from '../i18n';
+import { Icon } from '../icons';
+
+/** The anchor for the rendered Sources section, so the contents list can point at it. */
+const SOURCES_ID = 'sources';
 
 /** How many pages the "linked from" list shows before it stops being context and starts being a list. */
 const BACKLINK_LIMIT = 25;
@@ -134,6 +138,12 @@ export function PageView({ ctx, i18n, slug, index, go }: PageViewProps) {
 
   const tags = (page.tags ?? '').split(',').filter(Boolean);
 
+  // The body's own Sources heading is stripped above, but the section still renders from the extracted
+  // rows -- so the contents list has to name it, or it points at less than the reader can see.
+  const contents = sources.length > 0
+    ? [...rendered.toc, { id: SOURCES_ID, text: i18n.t('page.sources'), level: 2 as const }]
+    : rendered.toc;
+
   return (
     <article>
       <h1 className="wiki__title">{page.title}</h1>
@@ -148,17 +158,18 @@ export function PageView({ ctx, i18n, slug, index, go }: PageViewProps) {
         <div className="wiki__tags">
           {tags.map((tag) => (
             <a className="wiki__tag" key={tag} href={routeHref({ view: 'tag', tag })} onClick={go({ view: 'tag', tag })}>
+              <Icon name="tag" />
               {tag}
             </a>
           ))}
         </div>
       )}
 
-      {rendered.toc.length > 2 && (
+      {contents.length > 2 && (
         <nav className="wiki__toc" aria-label={i18n.t('page.contents')}>
-          <h2>{i18n.t('page.contents')}</h2>
+          <h2><Icon name="list-numbered" />{i18n.t('page.contents')}</h2>
           <ul>
-            {rendered.toc.map((entry) => (
+            {contents.map((entry) => (
               <li key={entry.id} data-level={entry.level}>
                 <a href={`#${entry.id}`}>{entry.text}</a>
               </li>
@@ -172,7 +183,7 @@ export function PageView({ ctx, i18n, slug, index, go }: PageViewProps) {
 
       {sources.length > 0 && (
         <section className="wiki__section">
-          <h2>{i18n.t('page.sources')}</h2>
+          <h2 id={SOURCES_ID}><Icon name="quote" />{i18n.t('page.sources')}</h2>
           <ol className="wiki__sources">
             {sources.map((source) => (
               <li key={source.id}>
@@ -188,7 +199,7 @@ export function PageView({ ctx, i18n, slug, index, go }: PageViewProps) {
 
       {backlinks.length > 0 && (
         <section className="wiki__section">
-          <h2>{i18n.t('page.backlinks')}</h2>
+          <h2><Icon name="link" />{i18n.t('page.backlinks')}</h2>
           <ul className="wiki__list">
             {[...new Map(backlinks.map((link) => [link.fromSlug, link])).values()].map((link) => (
               <li className="wiki__item" key={link.fromSlug}>

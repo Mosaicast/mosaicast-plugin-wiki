@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "platformApi": "0.8.0",
   "name": "Wiki",
+  "license": "AGPL-3.0-or-later",
+  "author": "The Mosaicast Authors",
+  "homepage": "https://github.com/Mosaicast/mosaicast-plugin-wiki",
   "backend": {
     "basePath": "/api/plugins/wiki",
     "extensions": [

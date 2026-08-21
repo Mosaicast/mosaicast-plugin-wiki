@@ -111,10 +111,26 @@ class WikiMarkdownTest {
 
     @Test
     void readsATimestampTheWayAPersonWritesOne() {
+        // The host's `?t=` grammar (ARCHITECTURE §6.4). This table is the same one core's
+        // util/timestamp.ts and web/TimestampParam.java are held to -- one grammar, three
+        // implementations, and a link that previews as one moment and plays another is worse than one
+        // carrying no timestamp at all.
+        assertEquals(754L, WikiMarkdown.seconds("754"));
         assertEquals(724L, WikiMarkdown.seconds("12:04"));
         assertEquals(3723L, WikiMarkdown.seconds("1:02:03"));
-        assertEquals(754L, WikiMarkdown.seconds("754"));
+        assertEquals(3723L, WikiMarkdown.seconds("1h02m03s"));
+        assertEquals(5400L, WikiMarkdown.seconds("90m"));
+        assertEquals(3600L, WikiMarkdown.seconds("1H"), "the unit form is case-insensitive");
+    }
+
+    @Test
+    void dropsATimestampItCannotRead() {
         assertNull(WikiMarkdown.seconds("later on"), "an unreadable one is dropped, never guessed");
         assertNull(WikiMarkdown.seconds(null));
+        assertNull(WikiMarkdown.seconds(""));
+        assertNull(WikiMarkdown.seconds("h"), "the all-optional unit pattern must not read this as zero");
+        assertNull(WikiMarkdown.seconds("12:70"), "minutes and seconds are bounded, as in the host");
+        assertNull(WikiMarkdown.seconds("99999"), "past 24h is a typo or a probe, not an episode");
+        assertNull(WikiMarkdown.seconds("99999999999999999999"), "and it must not overflow either");
     }
 }

@@ -62,6 +62,20 @@ describe('plugin.json', () => {
     expect(manifest.blobs.mimeTypes.length).toBeGreaterThan(0);
   });
 
+  it('credits itself, and matches the licence this repo actually ships', () => {
+    // Shown on the host's public /about page. AGPL matches LICENSE and every SPDX header here -- the
+    // sample plugin is Apache-2.0, so this is confirmed rather than copied.
+    expect(manifest.license).toBe('AGPL-3.0-or-later');
+    expect(manifest.author).toBeTruthy();
+    expect(manifest.homepage).toContain('mosaicast-plugin-wiki');
+  });
+
+  it('did not bump platformApi for the credit fields', () => {
+    // They are unvalidated and additive in both directions. platformApi is an exact major.minor match, so
+    // bumping it for a non-breaking field would reject every installed plugin until each re-released.
+    expect(manifest.platformApi).toBe('0.8.0');
+  });
+
   it('declares a fulltext field, which is the whole reason for a schema', () => {
     const fields = Object.values(manifest.storage.schema.page) as string[];
     expect(fields.some((type) => type.includes(':fulltext'))).toBe(true);
