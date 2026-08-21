@@ -1,0 +1,20 @@
+{
+  "wiki": "Wiki",
+  "home.title": "Wiki",
+  "home.empty": "Noch keine Seiten.",
+  "home.emptyHint": "Ein Podcaster kann die erste Seite anlegen.",
+  "home.recent": "Zuletzt bearbeitet",
+  "home.allPages": "Alle Seiten",
+  "search.placeholder": "Wiki durchsuchen",
+  "search.submit": "Suchen",
+  "search.results": "Ergebnisse für „{{query}}“",
+  "search.none": "Nichts gefunden für „{{query}}“.",
+  "page.notFound": "Diese Seite gibt es noch nicht.",
+  "page.updated": "Zuletzt bearbeitet {{when}}",
+  "page.backlinks": "Verlinkt von",
+  "page.sources": "Quellen",
+  "page.contents": "Inhalt",
+  "mentions.title": "Im Wiki erwähnt",
+  "loading": "Wird geladen…",
+  "error": "Das Wiki konnte nicht geladen werden."
+}

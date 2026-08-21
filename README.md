@@ -4,18 +4,44 @@
 
 Part of **[Mosaicast](https://github.com/mosaicast)** — an extensible website platform for podcasts. Status: **v1 in development**.
 
+![The wiki at /p/wiki, light and dark](assets/screenshots/phase1-wiki-light-1280.png)
+
 ## What is this?
+A wiki for the site — lore, glossary, people, anything worth a page. It is the one plugin that declares a
+relational **schema** instead of using the generic doc store, because a wiki is relational: full-text
+search, revisions, backlinks and per-page sources are all queries a key/value store answers badly.
+
+Pages live at **`/p/wiki/{slug}`**, so they are linkable and shareable; the plugin supplies OpenGraph
+metadata and sitemap entries for them.
+
 See `docs/ARCHITECTURE.md` for the big picture and `docs/BRIEF.md` for this repo's scope.
 
 ## Build & test
 ```bash
-./build.sh        # -> dist/
-cd backend && ./gradlew test  ;  cd ../frontend && npm test
+./build.sh                                       # -> dist/
+cd backend && ./gradlew test                     # against the SDK test kit
+cd frontend && npm test && npm run typecheck     # Vite does not type-check; tsc does
 ```
 
 ## Build & install
-`./build.sh` -> `dist/` -> copy to `$MOSAICAST_PLUGINS_DIR`, restart core.
-The only plugin that uses the schema provider (namespaced tables, platform-provisioned).
+`./build.sh` -> `dist/` -> copy to `$MOSAICAST_PLUGINS_DIR` (or run `./install.sh`), restart core.
+Core loads plugins **at startup only**, so every rebuild needs a restart.
+
+```bash
+./build.sh && MOSAICAST_PLUGINS_DIR=../mosaicast-core/plugins ./install.sh
+```
+
+## How it stores things
+Three stores, each for what it is good at:
+
+- **Schema** (`plugin_wiki_page`, `_revision`, `_link`, `_source`, `_media`) — the read model. The platform
+  provisions the tables from `plugin.json`; the plugin never writes DDL. The frontend queries them
+  read-only through `ctx.schema`.
+- **Doc store** — the write channel. There are no schema writes over HTTP, so the editor saves a
+  `draft:<slug>` document and the backend ingests it into the tables on its schedule. **A save is therefore
+  eventually consistent**, and the UI says so rather than pretending otherwise.
+- **Blobs** (`ctx.blobs`) — uploaded images and documents, served same-origin under `/api/`, so they need no
+  CSP host and make no consent decision. A row stores the file's **ref**, never a URL. SVG is never stored.
 
 ## Contributing
 Contributions welcome — see [`CONTRIBUTING.md`](CONTRIBUTING.md). In short: `git commit -s` (DCO, required), SPDX header in new files, add tests.
