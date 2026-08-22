@@ -21,6 +21,8 @@ export type WikiRoute =
   | { view: 'new' }
   | { view: 'search'; query: string }
   | { view: 'tag'; tag: string }
+  | { view: 'all' }
+  | { view: 'random' }
   | { view: 'admin' };
 
 /** Normalises a user-supplied title into a slug: lowercase, hyphenated, no leading underscore. */
@@ -55,6 +57,10 @@ export function parseRoute(path: string): WikiRoute {
       return { view: 'tag', tag: second ?? '' };
     case '_new':
       return { view: 'new' };
+    case '_all':
+      return { view: 'all' };
+    case '_random':
+      return { view: 'random' };
     case '_admin':
       return { view: 'admin' };
     default:
@@ -88,6 +94,10 @@ export function routePath(route: WikiRoute): string {
       return `${encodeURIComponent(route.slug)}/edit`;
     case 'new':
       return '_new';
+    case 'all':
+      return '_all';
+    case 'random':
+      return '_random';
     case 'search':
       return `_search/${encodeURIComponent(route.query)}`;
     case 'tag':

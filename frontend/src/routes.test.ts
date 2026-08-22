@@ -14,6 +14,14 @@ describe('parseRoute', () => {
     expect(parseRoute('the-kraken')).toEqual({ view: 'page', slug: 'the-kraken' });
   });
 
+  it('reads the verbs the navigation menu points at', () => {
+    // Every nav entry in plugin.json must resolve to a view, or the menu links into a not-found page.
+    expect(parseRoute('_all')).toEqual({ view: 'all' });
+    expect(parseRoute('_random')).toEqual({ view: 'random' });
+    expect(parseRoute('_new')).toEqual({ view: 'new' });
+    expect(parseRoute('')).toEqual({ view: 'home' });
+  });
+
   it('reads the page verbs', () => {
     expect(parseRoute('the-kraken/history')).toEqual({ view: 'history', slug: 'the-kraken' });
     expect(parseRoute('the-kraken/edit')).toEqual({ view: 'edit', slug: 'the-kraken' });
@@ -44,6 +52,8 @@ describe('routePath / routeHref', () => {
       { view: 'edit', slug: 'the-kraken' },
       { view: 'search', query: 'deep sea' },
       { view: 'tag', tag: 'lore' },
+      { view: 'all' },
+      { view: 'random' },
       { view: 'admin' },
     ] as const) {
       expect(parseRoute(routePath(route))).toEqual(route);

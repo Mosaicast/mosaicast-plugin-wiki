@@ -43,6 +43,32 @@
       "order": 200
     }
   ],
+  "nav": [
+    {
+      "path": "",
+      "label": "Wiki",
+      "icon": "book",
+      "visibleTo": "anonymous"
+    },
+    {
+      "path": "_all",
+      "label": "All wiki pages",
+      "icon": "list",
+      "visibleTo": "anonymous"
+    },
+    {
+      "path": "_random",
+      "label": "Random wiki page",
+      "icon": "dice",
+      "visibleTo": "anonymous"
+    },
+    {
+      "path": "_new",
+      "label": "New wiki page",
+      "icon": "compose",
+      "visibleTo": "podcaster"
+    }
+  ],
   "storage": {
     "schema": {
       "page": {
@@ -127,6 +153,11 @@
     "embedsEnabled": {
       "type": "boolean",
       "default": true,
+      "editableBy": "podcaster"
+    },
+    "blobGraceMinutes": {
+      "type": "number",
+      "default": 60,
       "editableBy": "podcaster"
     }
   }

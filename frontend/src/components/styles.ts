@@ -143,6 +143,63 @@ export const WIKI_CSS = ICON_CSS + `
   .wiki__note { color: var(--mc-text-muted); }
   a.wiki__tag:hover { color: var(--mc-text); border-color: var(--mc-accent); text-decoration: none; }
 
+  .wiki__pageactions { display: flex; gap: 1rem; margin: 0 0 1rem; font-size: .875rem; }
+  .wiki__field { margin-bottom: 1rem; }
+  .wiki__field label, .wiki__label {
+    display: block; margin-bottom: .3rem;
+    font-size: .8125rem; font-weight: 600; color: var(--mc-text-muted);
+  }
+  .wiki__hint { margin: .3rem 0 0; font-size: .8125rem; color: var(--mc-text-muted); }
+  /* In the bar an input is a flex child; in a field it is the whole row. */
+  .wiki__field .wiki__input { width: 100%; box-sizing: border-box; }
+  .wiki__area {
+    display: block; width: 100%; box-sizing: border-box; min-height: 18rem;
+    padding: .6rem .75rem;
+    color: var(--mc-text); background: var(--mc-bg);
+    border: 1px solid var(--mc-border); border-radius: .5rem;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .875rem; line-height: 1.55;
+    resize: vertical;
+  }
+  .wiki__area:focus-visible { outline: 2px solid var(--mc-accent); outline-offset: 1px; }
+  /* Two columns where there is room; the container query below stacks them on a phone. */
+  .wiki__editor { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; align-items: start; }
+  .wiki__preview {
+    min-height: 18rem; padding: .6rem .75rem;
+    background: var(--mc-surface); border: 1px solid var(--mc-border); border-radius: .5rem;
+  }
+  .wiki__upload { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; margin-top: .5rem; }
+  .wiki__upload .wiki__btn { cursor: pointer; }
+  .wiki__actions { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: 1.25rem; }
+  .wiki__btn--danger { color: var(--mc-text); background: transparent; border-color: var(--mc-accent-2); }
+  .wiki__btn:disabled { opacity: .6; cursor: default; }
+  .wiki__status {
+    display: flex; align-items: center; gap: .4rem;
+    margin: 1rem 0 0; padding: .6rem .8rem;
+    color: var(--mc-text-muted); background: var(--mc-surface);
+    border: 1px solid var(--mc-border); border-radius: .5rem; font-size: .875rem;
+  }
+  .wiki__status--ok { color: var(--mc-text); border-color: var(--mc-accent); }
+  /* A diff is monospace and scrolls inside itself; the page must never scroll sideways for it. */
+  .wiki__diff {
+    overflow-x: auto;
+    border: 1px solid var(--mc-border); border-radius: .5rem;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .8125rem; line-height: 1.6;
+  }
+  .wiki__diff-line { display: flex; gap: .5rem; padding: 0 .5rem; white-space: pre; }
+  .wiki__diff-no {
+    flex: none; width: 2.5rem; text-align: right;
+    color: var(--mc-text-muted); opacity: .7; user-select: none;
+  }
+  .wiki__diff-mark { flex: none; width: 1ch; user-select: none; }
+  .wiki__diff-text { flex: 1 1 auto; }
+  /* Colour alone must not carry the added/removed distinction, so every line keeps its +/- mark. */
+  .wiki__diff-line--added { background: color-mix(in oklab, var(--mc-accent) 14%, transparent); }
+  .wiki__diff-line--removed { background: color-mix(in oklab, var(--mc-accent-2) 14%, transparent); }
+  .wiki__diff-gap {
+    padding: .15rem .5rem; color: var(--mc-text-muted);
+    background: var(--mc-surface); border-block: 1px solid var(--mc-border); user-select: none;
+  }
+
   /* One narrow-container block, so there is a single place to look for the phone layout. */
   @container (max-width: 30rem) {
     .wiki--page { padding: 1rem .75rem 2rem; }
@@ -150,5 +207,8 @@ export const WIKI_CSS = ICON_CSS + `
     /* The bar becomes a column here, and in a column flex container flex-basis sizes the HEIGHT — so the
        row layout's "flex: 1 1 16rem" would make the search field 16rem tall instead of 16rem wide. */
     .wiki__search { flex: 0 0 auto; }
+    /* Side-by-side editing needs width the phone has not got; the preview follows the body instead. */
+    .wiki__editor { grid-template-columns: 1fr; }
+    .wiki__area, .wiki__preview { min-height: 12rem; }
   }
 `;

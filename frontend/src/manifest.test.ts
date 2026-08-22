@@ -76,6 +76,19 @@ describe('plugin.json', () => {
     expect(manifest.platformApi).toBe('0.8.0');
   });
 
+  it('declares navigation entries the host will accept', () => {
+    // Rejected at load: an entry without a `page` slot, a blank label, a path that needed normalising
+    // (refused rather than quietly rewritten into a different URL), or two entries on one path.
+    expect(manifest.slots.some((slot) => slot.placement === 'page')).toBe(true);
+    const paths = manifest.nav.map((entry) => entry.path);
+    expect(new Set(paths).size).toBe(paths.length);
+    for (const entry of manifest.nav) {
+      expect(entry.label.trim()).not.toBe('');
+      expect(entry.path).toBe(entry.path.replace(/^\/+/, ''));
+      expect(entry.path.split('/')).not.toContain('..');
+    }
+  });
+
   it('declares a fulltext field, which is the whole reason for a schema', () => {
     const fields = Object.values(manifest.storage.schema.page) as string[];
     expect(fields.some((type) => type.includes(':fulltext'))).toBe(true);

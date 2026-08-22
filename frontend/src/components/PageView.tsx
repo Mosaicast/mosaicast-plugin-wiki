@@ -35,6 +35,7 @@ interface PageViewProps {
  * path buys, and the not-found state says so rather than implying the page is gone.
  */
 export function PageView({ ctx, i18n, slug, index, go }: PageViewProps) {
+  const mayEdit = ctx.user?.role === 'podcaster' || ctx.user?.role === 'admin';
   const [page, setPage] = useState<PageRow | null | undefined>(undefined);
   const [backlinks, setBacklinks] = useState<LinkRow[]>([]);
   const [sources, setSources] = useState<SourceRow[]>([]);
@@ -152,6 +153,19 @@ export function PageView({ ctx, i18n, slug, index, go }: PageViewProps) {
           ? i18n.t('page.updated', { when: new Date(page.updatedAt).toLocaleDateString(ctx.locale.current()) })
           : null}
         {page.revisionNo ? ` · ${i18n.t('page.revision', { n: String(page.revisionNo) })}` : null}
+      </p>
+
+      <p className="wiki__pageactions">
+        <a href={routeHref({ view: 'history', slug })} onClick={go({ view: 'history', slug })}>
+          <Icon name="history" />
+          {i18n.t('page.history')}
+        </a>
+        {mayEdit && (
+          <a href={routeHref({ view: 'edit', slug })} onClick={go({ view: 'edit', slug })}>
+            <Icon name="edit" />
+            {i18n.t('page.edit')}
+          </a>
+        )}
       </p>
 
       {tags.length > 0 && (

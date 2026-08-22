@@ -3,6 +3,7 @@
 
 package dev.mosaicast.plugin.wiki;
 
+import dev.mosaicast.plugin.api.BlobInfo;
 import dev.mosaicast.plugin.api.Criteria;
 import dev.mosaicast.plugin.api.Criteria.Direction;
 import dev.mosaicast.plugin.api.Criteria.Op;
@@ -24,6 +25,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.HashSet;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.pf4j.Extension;
 
@@ -75,9 +79,16 @@ public class WikiPlugin implements PluginBackend, ShareMetadataProvider, Sitemap
      */
     private static final Pattern SLUG = Pattern.compile("^[a-z0-9][a-z0-9-]{0,119}$");
 
+    /** A file reference inside a page body, as the editor writes it. */
+    private static final Pattern BLOB_REF = Pattern.compile("blob:([A-Za-z0-9-]{6,})");
+
     private static final int DEFAULT_INGEST_SECONDS = 30;
     private static final int DEFAULT_REVISIONS_KEPT = 50;
+    private static final int DEFAULT_BLOB_GRACE_MINUTES = 60;
     private static final int SUMMARY_CHARS = 200;
+
+    /** How many files one sweep looks at. A wiki's library is small; this bounds a pathological one. */
+    private static final int BLOB_PAGE = 200;
 
     private PluginContext ctx;
 
@@ -101,6 +112,7 @@ public class WikiPlugin implements PluginBackend, ShareMetadataProvider, Sitemap
             ingestDrafts();
             applyDeletions();
             pruneRevisions();
+            sweepOrphanedFiles();
         } catch (RuntimeException e) {
             // A failure here must not stop the projections from refreshing, or one bad draft freezes the
             // whole wiki's front page.
@@ -287,6 +299,73 @@ public class WikiPlugin implements PluginBackend, ShareMetadataProvider, Sitemap
             schema.delete("revision", Criteria.where("pageSlug", Op.EQ, page.slug())
                     .and("revisionNo", Op.LTE, cutoff));
         }
+    }
+
+    /**
+     * Deletes uploaded files no page points at any more.
+     *
+     * <p><strong>Nothing else collects them.</strong> A file outlives the row that named it, and only this
+     * plugin knows which refs are still in use -- the host cannot tell an orphan from a file a draft is
+     * about to reference. So the wiki sweeps its own.
+     *
+     * <p>The grace period is the whole subtlety. An author uploads an image and the editor writes the ref
+     * into the body, but the draft is not saved until they say so, and it is not ingested until the next
+     * tick -- so for a while a perfectly live file is referenced by nothing this side can see. Sweeping on
+     * age alone would delete the image out from under someone still writing the paragraph around it.
+     */
+    private void sweepOrphanedFiles() {
+        var blobs = ctx.blobs();
+        SchemaStore schema = ctx.schema();
+        if (blobs == null || schema == null) {
+            return;
+        }
+        // Zero is allowed and means "sweep an unreferenced file as soon as it is seen". That is a real
+        // choice for an install whose authors never leave an upload unsaved, and it is the only way to
+        // observe this behaviour without waiting an hour -- but it is not the default, because the
+        // default has to protect the author still writing the paragraph around the image.
+        int graceMinutes = Math.max(0,
+                ctx.config().get("blobGraceMinutes", Integer.class, DEFAULT_BLOB_GRACE_MINUTES));
+        Instant cutoff = Instant.now().minus(Duration.ofMinutes(graceMinutes));
+
+        Set<String> referenced = new HashSet<>();
+        for (MediaRow row : schema.select("media", Criteria.where("uploadRef", Op.IS_NOT_NULL, null), MediaRow.class)) {
+            if (blankToNull(row.uploadRef()) != null) {
+                referenced.add(row.uploadRef());
+            }
+        }
+        // A ref sitting in an unapplied draft is live too -- the body is written, just not ingested yet.
+        for (DocEntry draft : ctx.store().query(Scope.site(), DRAFT_PREFIX)) {
+            referenced.addAll(refsIn(draft.value() == null ? null : draft.value().toString()));
+        }
+
+        int removed = 0;
+        for (BlobInfo file : blobs.list(0, BLOB_PAGE)) {
+            if (referenced.contains(file.ref())) {
+                continue;
+            }
+            if (file.updatedAt() != null && file.updatedAt().isAfter(cutoff)) {
+                continue;   // too new to judge: someone may still be writing the page around it
+            }
+            if (blobs.delete(file.ref())) {
+                removed++;
+            }
+        }
+        if (removed > 0) {
+            ctx.logger().info("wiki: removed {} uploaded file(s) no page references", removed);
+        }
+    }
+
+    /** Every {@code blob:<ref>} a body mentions, however the body reached us. */
+    private static Set<String> refsIn(String text) {
+        Set<String> refs = new HashSet<>();
+        if (text == null) {
+            return refs;
+        }
+        Matcher matcher = BLOB_REF.matcher(text);
+        while (matcher.find()) {
+            refs.add(matcher.group(1));
+        }
+        return refs;
     }
 
     private void receipt(String slug, String state, String detail, Long revisionNo) {

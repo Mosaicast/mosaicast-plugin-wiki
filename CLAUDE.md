@@ -71,6 +71,16 @@ cd ../mosaicast-core && dev/screenshots.sh up   # :8081, fleeting PG :5433, samp
 #   dev-login: POST /api/auth/dev-login?role=podcaster|fan|admin (prime /api/meta, send X-XSRF-TOKEN)
 dev/screenshots.sh down
 ```
+**Three ways this loop lies to you, all seen in practice:**
+1. **`up` accepts a stale instance.** Its health check answers from an app that is already running, so a
+   rebuilt plugin never loads and you test the previous build. After `down`, wait until
+   `curl -sf localhost:8081/actuator/health` *fails* before `up`.
+2. **Never wrap `up` in `timeout`, and don't background it.** The app is a grandchild of the call; when
+   that call's process group is reaped the JVM dies mid-test. Symptom: `curl` starts returning `000`, and
+   a fresh fleeting Postgres means every schema table looks empty — which reads exactly like a bug in
+   your own code. Check `docker inspect -f '{{.State.StartedAt}}' mosaicast-shots` before believing it.
+3. **Don't run `./build.sh` while the stack is up** — a second Gradle invocation can take the bootRun
+   daemon with it. Build first, install, then boot.
 Disposable and seeded only with the fictional sample feed — seeding and deleting wiki data there is free.
 Core loads plugins **at startup only**: a rebuilt backend needs a restart (a rebuilt bundle does not).
 Capture light + dark at 375×667, 768×1024, 1280×800 into `assets/screenshots/`; put them in the PR.

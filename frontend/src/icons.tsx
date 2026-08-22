@@ -46,13 +46,19 @@ const BLANK = "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg
  */
 export const ICON_NAMES = [
   'arrow-left',
+  'check',
   'clock',
+  'delete',
+  'edit',
+  'history',
   'link',
   'list-numbered',
   'music',
   'quote',
   'search',
+  'save',
   'tag',
+  'upload',
   'warning',
 ] as const;
 
