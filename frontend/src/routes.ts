@@ -10,6 +10,10 @@
  *
  * Underscore-prefixed segments are the wiki's own verbs (`_search`, `_new`, `_admin`). A page slug can
  * never collide with one, because slugs are normalised to strip a leading underscore.
+ *
+ * **A search term is a query parameter** (`_search?q=…`) since SDK 0.9 gave `ctx.route` a `query`. It was
+ * a path segment before that, only because the subpath was all a plugin got — so `_search/<term>` is still
+ * read, and a link written before the change keeps working.
  */
 
 export type WikiRoute =
@@ -43,7 +47,7 @@ export function toSlug(input: string): string {
  * @returns the view to render; unknown shapes fall back to the page reader, which renders its own
  *          not-found state rather than a blank tile
  */
-export function parseRoute(path: string): WikiRoute {
+export function parseRoute(path: string, query?: URLSearchParams): WikiRoute {
   const segments = path.split('/').filter(Boolean).map(decodeURIComponent);
   if (segments.length === 0) {
     return { view: 'home' };
@@ -52,7 +56,8 @@ export function parseRoute(path: string): WikiRoute {
   const [first, second, third] = segments;
   switch (first) {
     case '_search':
-      return { view: 'search', query: segments.slice(1).join('/') };
+      // `?q=` first; the path form is the pre-0.9 spelling, kept so an old link still resolves.
+      return { view: 'search', query: query?.get('q')?.trim() || segments.slice(1).join('/') };
     case '_tag':
       return { view: 'tag', tag: second ?? '' };
     case '_new':
@@ -99,7 +104,7 @@ export function routePath(route: WikiRoute): string {
     case 'random':
       return '_random';
     case 'search':
-      return `_search/${encodeURIComponent(route.query)}`;
+      return `_search?q=${encodeURIComponent(route.query)}`;
     case 'tag':
       return `_tag/${encodeURIComponent(route.tag)}`;
     case 'admin':

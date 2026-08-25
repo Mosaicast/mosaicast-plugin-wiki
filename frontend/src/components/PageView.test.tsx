@@ -84,6 +84,23 @@ describe('<WikiPage> — reader', () => {
     expect(entities).toContain('source');
   });
 
+  it('does not show an unpublished page to a visitor who could not edit it', async () => {
+    // `readableBy: anonymous` opens the schema *surface*, not each row: core has no model of a wiki page
+    // and cannot know that `status` decides who sees one. Without the filter, guessing a draft's URL
+    // read its body.
+    const draft = { ...KRAKEN, id: 9, slug: 'half-written', title: 'Half written', status: 'draft' };
+    const ctx = makeMockCtx({
+      route: { path: 'half-written' },
+      apiResponses: { 'data/site/main/index': INDEX },
+      schema: makeMockSchema({ page: [draft], link: [], source: [], media: [], revision: [] }),
+    });
+
+    await render(ctx);
+
+    expect(host.textContent).toContain('This page does not exist yet.');
+    expect(host.textContent).not.toContain('Half written');
+  });
+
   it('states that a page does not exist rather than rendering a blank tile', async () => {
     // A page the ingest tick has not applied yet is genuinely not there. Saying so beats an empty article.
     const ctx = ctxFor('nowhere');

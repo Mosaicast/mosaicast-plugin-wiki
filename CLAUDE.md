@@ -11,7 +11,7 @@ Read both fully before writing code. Work in plan mode first.
 ### `docs/BRIEF.md` is stale — known corrections
 It predates SDK 0.4.0 and is a read-only spec, so the corrections live here instead of in it. Where it
 disagrees with the SDK working tree or `mosaicast-plugin-sample`, the latter win.
-- `platformApi` is **`0.8.0`** (exact `major.minor` match; the docs' `"1.x"` does not even parse). Pin the
+- `platformApi` is **`0.9.1`** (exact `major.minor` match; the docs' `"1.x"` does not even parse). Pin the
   same string in all four places — `plugin.json`, both gradle coordinates, `package.json`.
 - Its `site / main` slot **renders nowhere** — `main` is the *episode page body*. This plugin uses
   `placement: "page"` (scope `site`, required or `/p/wiki/*` is a real 404) plus `placement: "site"`.
@@ -32,12 +32,14 @@ links) shipped in SDK 0.8.0 / core 0.6.11+.
 - **`ctx.links.episode(slug, { t })`** for citing a moment; `ctx.links.feed(slug, …)`. Never hardcode
   `/episodes/…` or `/feeds/…`.
 - Core 0.6.12 ships its **own share dialog** on episodes, feeds and the site panel — do not build a second.
-- **`--mc-icon-*` icons** (§12.3): the shell publishes its icon set as custom properties, which inherit
-  through the shadow boundary — no SDK import, no `platformApi` bump, no version skew. See
-  `frontend/src/icons.tsx`. Three rules, all pinned by tests: consume as a **mask** (a background image
-  bakes in a colour and ignores the theme); give every reference the **blank fallback** (an unresolved
-  `var()` reverts `mask-image` to `none`, painting a solid square); never **declare** into `--mc-*`.
-  An icon is not a word — marks never go in a translated string.
+- **`--mc-icon-*` icons** (§12.3): `iconCss(ICON_NAMES, { className })` builds the stylesheet since SDK
+  0.9 — the plugin no longer hand-rolls the mask rules or the blank fallback. **The class name must be
+  kebab-case or `iconCss` throws**, at runtime inside a render, which the host's error boundary turns into
+  a blanked tile; `tsc` does not catch it. An icon is still not a word — marks never go in a translated
+  string.
+- **The SDK's nav type and core disagree, and core wins.** `PluginNavDeclaration` says `role`; core reads
+  **`visibleTo`**. Worse than it sounds: core maps an *absent* value to **anonymous**, so following the SDK
+  type would advertise the podcaster-only entrance to everyone. Pinned in `manifest.contract.test.ts`.
 - **Credit fields** `license`/`author`/`homepage`(/`attribution`) surface on the host's `/about` page.
   Unvalidated and additive: **never bump `platformApi` for them**, since that check is an exact
   `major.minor` match and a bump rejects every installed plugin.
@@ -94,6 +96,13 @@ rm -rf node_modules package-lock.json && npm install --ignore-scripts
 # then rewrite each `"extraneous": true` to `"dev": true, "optional": true`
 npm ci && npx npm@10 ci     # both must pass before pushing
 ```
+
+## Access is per row, not per surface
+`data.readableBy: anonymous` opens the schema **surface**; it says nothing about which rows a visitor may
+see. Core has no model of a wiki page and cannot know that `status` decides one — the same rule
+`SearchProvider` states out loud, and it applies just as much to the reader. **Three places must filter
+`status = published` for anyone who cannot edit**: `PageView`, `SearchProvider`, and `hasRoute`. Missing it
+in the reader meant a guessed draft URL rendered the draft.
 
 ## Page syntax (what the backend extracts and the reader renders)
 ```

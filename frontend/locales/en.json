@@ -27,6 +27,7 @@
   "editor.summaryHint": "Left empty, the first paragraph is used.",
   "editor.syntaxHint": "[[page]] links a wiki page · [[episode:slug@12:04]] cites a moment · a “Sources” heading becomes the sources list",
   "editor.tags": "Tags",
+  "editor.tagsHint": "Comma-separated. Shared with the rest of the site, so an existing word connects this page to episodes carrying it.",
   "editor.timeout": "Still queued. The wiki may be busy; the save is not lost.",
   "editor.title": "Title",
   "editor.uploadFailed": "The upload did not go through.",
@@ -66,6 +67,7 @@
   "search.results": "Results for “{{query}}”",
   "search.submit": "Search",
   "soon": "This part of the wiki is not built yet.",
+  "tag.episodes": "Episodes with this tag",
   "tag.none": "No pages tagged “{{tag}}”.",
   "tag.title": "Tagged “{{tag}}”",
   "wiki": "Wiki"

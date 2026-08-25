@@ -51,7 +51,19 @@ export function PageView({ ctx, i18n, slug, index, go }: PageViewProps) {
     setPage(undefined);
 
     Promise.all([
-      schema.select<PageRow>('page', { where: [{ field: 'slug', op: 'eq', value: slug }], size: 1 }),
+      // An unpublished page is readable only by someone who could edit it. The `readableBy: anonymous`
+      // floor opens the *surface*, not each row -- core has no model of a wiki page and cannot know that
+      // `status` decides who sees one, which is the same rule SearchProvider states out loud. Without this
+      // a visitor who guessed a draft's URL read its body.
+      schema.select<PageRow>('page', {
+        where: mayEdit
+          ? [{ field: 'slug', op: 'eq', value: slug }]
+          : [
+              { field: 'slug', op: 'eq', value: slug },
+              { field: 'status', op: 'eq', value: 'published' },
+            ],
+        size: 1,
+      }),
       schema.select<LinkRow>('link', {
         where: [
           { field: 'toSlug', op: 'eq', value: slug },
@@ -83,7 +95,7 @@ export function PageView({ ctx, i18n, slug, index, go }: PageViewProps) {
     return () => {
       cancelled = true;
     };
-  }, [ctx, slug]);
+  }, [ctx, slug, mayEdit]);
 
   const rendered = useMemo(() => {
     if (!page) {

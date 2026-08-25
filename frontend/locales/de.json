@@ -27,6 +27,7 @@
   "editor.summaryHint": "Leer gelassen wird der erste Absatz verwendet.",
   "editor.syntaxHint": "[[seite]] verlinkt eine Wiki-Seite · [[episode:slug@12:04]] zitiert einen Moment · eine Überschrift „Quellen“ wird zur Quellenliste",
   "editor.tags": "Tags",
+  "editor.tagsHint": "Kommagetrennt. Wird mit der übrigen Seite geteilt — ein vorhandenes Wort verbindet diese Seite mit Folgen, die es tragen.",
   "editor.timeout": "Immer noch in der Warteschlange. Das Wiki ist vielleicht beschäftigt; die Änderung ist nicht verloren.",
   "editor.title": "Titel",
   "editor.uploadFailed": "Der Upload hat nicht geklappt.",
@@ -66,6 +67,7 @@
   "search.results": "Ergebnisse für „{{query}}“",
   "search.submit": "Suchen",
   "soon": "Dieser Teil des Wikis ist noch nicht gebaut.",
+  "tag.episodes": "Folgen mit diesem Tag",
   "tag.none": "Keine Seiten mit „{{tag}}“.",
   "tag.title": "Getaggt mit „{{tag}}“",
   "wiki": "Wiki"

@@ -2,12 +2,13 @@
 // SPDX-FileCopyrightText: 2026 The Mosaicast Authors
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from 'react';
-import type { PluginContext } from '@mosaicast/plugin-sdk';
+import { isPluginApiError, type PluginContext } from '@mosaicast/plugin-sdk';
 import { renderPage } from '../markdown';
 import { routeHref, routePath, toSlug, type WikiRoute } from '../routes';
 import { deleteKey, draftKey, SITE_PATH, type IngestReceipt, type PageRow, type PageSummary } from '../types';
 import type { PluginI18n } from '../i18n';
 import { Icon } from '../icons';
+import { describeApiError } from './useDoc';
 
 /** How often to re-read the ingest receipt while a save is queued. */
 const POLL_MS = 2_000;
@@ -67,6 +68,7 @@ export function EditorView({ ctx, i18n, slug, index, go }: EditorViewProps) {
   const [save, setSave] = useState<SaveState>({ phase: 'idle' });
   const [upload, setUpload] = useState<{ busy: boolean; error: string | null }>({ busy: false, error: null });
   const [quota, setQuota] = useState<{ usedBytes: number; quotaBytes: number; maxFileBytes: number } | null>(null);
+  const [vocabulary, setVocabulary] = useState<{ tag: string; label: string }[]>([]);
   const bodyRef = useRef<HTMLTextAreaElement>(null);
   const pollRef = useRef<number | null>(null);
 
@@ -117,7 +119,24 @@ export function EditorView({ ctx, i18n, slug, index, go }: EditorViewProps) {
     ctx.blobs
       ?.quota()
       .then((q) => !cancelled && setQuota(q))
-      .catch(() => undefined); // a missing quota only costs the hint, not the upload
+      // Deliberately swallowed, and narrow: a missing quota costs the hint above the file picker
+      // and nothing else. The upload itself still reports its own refusal.
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [ctx]);
+
+  // The site's shared vocabulary (§6.1.1), offered as suggestions. Before SDK 0.9 this was a free-text
+  // box over a private column, which is how a site ends up with `lore`, `Lore` and `lore ` as three tags.
+  // `ctx.tags` is null unless the manifest declares the block.
+  useEffect(() => {
+    let cancelled = false;
+    ctx.tags
+      ?.all()
+      .then((all) => !cancelled && setVocabulary(all.map((t) => ({ tag: t.tag, label: t.label }))))
+      // Swallowed narrowly: without suggestions the field is still a working text input.
+      .catch(() => undefined);
     return () => {
       cancelled = true;
     };
@@ -171,15 +190,14 @@ export function EditorView({ ctx, i18n, slug, index, go }: EditorViewProps) {
       ctx.blobs.quota().then(setQuota).catch(() => undefined);
     } catch (error: unknown) {
       // The person who picked the file is the only one who can pick a different one, so the refusal has
-      // to reach them. 413 and 415 are worded apart because the fixes differ.
-      const text = String(error);
-      const key = /\b413\b|quota/.test(text)
-        ? 'editor.uploadTooBig'
-        : /\b415\b|type/.test(text)
-          ? 'editor.uploadWrongType'
-          : 'editor.uploadFailed';
+      // to reach them, and 413 and 415 are worded apart because the fixes differ: send a smaller file,
+      // versus send a different kind of file. Since SDK 0.9 the status is on the error rather than
+      // something to find in its message.
+      const status = isPluginApiError(error) ? error.status : 0;
+      const key =
+        status === 413 ? 'editor.uploadTooBig' : status === 415 ? 'editor.uploadWrongType' : 'editor.uploadFailed';
       setUpload({ busy: false, error: i18n.t(key) });
-      ctx.log('warn', `wiki: upload refused: ${text}`);
+      ctx.log('warn', `wiki: upload refused: ${describeApiError(error)}`);
     }
   };
 
@@ -328,7 +346,16 @@ export function EditorView({ ctx, i18n, slug, index, go }: EditorViewProps) {
           value={tags}
           onChange={(event) => setTags(event.target.value)}
           placeholder="lore, sea"
+          list={vocabulary.length > 0 ? 'wiki-tag-vocabulary' : undefined}
         />
+        {vocabulary.length > 0 && (
+          <datalist id="wiki-tag-vocabulary">
+            {vocabulary.map((entry) => (
+              <option key={entry.tag} value={entry.label} />
+            ))}
+          </datalist>
+        )}
+        <p className="wiki__hint">{i18n.t('editor.tagsHint')}</p>
       </div>
 
       <div className="wiki__editor">
@@ -355,9 +382,9 @@ export function EditorView({ ctx, i18n, slug, index, go }: EditorViewProps) {
               {quota && (
                 <span className="wiki__hint">
                   {i18n.t('editor.quota', {
-                    used: formatBytes(quota.usedBytes),
-                    total: formatBytes(quota.quotaBytes),
-                    max: formatBytes(quota.maxFileBytes),
+                    used: i18n.bytes(quota.usedBytes),
+                    total: i18n.bytes(quota.quotaBytes),
+                    max: i18n.bytes(quota.maxFileBytes),
                   })}
                 </span>
               )}
@@ -477,19 +504,4 @@ function SaveStatus({
         </p>
       );
   }
-}
-
-/** Byte sizes as an author reads them, not as a machine writes them. */
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) {
-    return `${bytes} B`;
-  }
-  const units = ['KB', 'MB', 'GB'];
-  let value = bytes / 1024;
-  let unit = 0;
-  while (value >= 1024 && unit < units.length - 1) {
-    value /= 1024;
-    unit += 1;
-  }
-  return `${value < 10 ? value.toFixed(1) : Math.round(value)} ${units[unit]}`;
 }

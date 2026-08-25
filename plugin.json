@@ -1,7 +1,7 @@
 {
   "id": "wiki",
   "version": "0.1.0",
-  "platformApi": "0.8.0",
+  "platformApi": "0.9.1",
   "name": "Wiki",
   "license": "AGPL-3.0-or-later",
   "author": "The Mosaicast Authors",
@@ -123,7 +123,6 @@
     "writableBy": "podcaster",
     "backendOwned": [
       "index",
-      "episodes",
       "wikistats",
       "ingest:*"
     ]
@@ -138,6 +137,10 @@
       "image/gif",
       "application/pdf"
     ]
+  },
+  "tags": {
+    "readsVocabulary": true,
+    "writesEpisodes": false
   },
   "config": {
     "ingestIntervalSeconds": {

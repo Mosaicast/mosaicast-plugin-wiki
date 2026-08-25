@@ -25,7 +25,7 @@ describe('plugin.json', () => {
     for (const key of ['draft:kraken', 'delete:kraken']) {
       expect(covered(key)).toBe(false);
     }
-    for (const key of ['index', 'episodes', 'wikistats', 'ingest:kraken']) {
+    for (const key of ['index', 'wikistats', 'ingest:kraken']) {
       expect(covered(key)).toBe(true);
     }
   });
@@ -70,10 +70,10 @@ describe('plugin.json', () => {
     expect(manifest.homepage).toContain('mosaicast-plugin-wiki');
   });
 
-  it('did not bump platformApi for the credit fields', () => {
-    // They are unvalidated and additive in both directions. platformApi is an exact major.minor match, so
-    // bumping it for a non-breaking field would reject every installed plugin until each re-released.
-    expect(manifest.platformApi).toBe('0.8.0');
+  it('pins platformApi to the contract this bundle was built against', () => {
+    // An exact major.minor match: a 0.8.x manifest is rejected outright by a 0.9.x host. The credit fields
+    // did not cause this bump -- they are unvalidated and additive; the 0.9 contract did.
+    expect(manifest.platformApi).toBe('0.9.1');
   });
 
   it('declares navigation entries the host will accept', () => {

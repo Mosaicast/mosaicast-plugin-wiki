@@ -28,12 +28,21 @@ describe('parseRoute', () => {
     expect(parseRoute('the-kraken/rev/3')).toEqual({ view: 'revision', slug: 'the-kraken', revisionNo: 3 });
   });
 
-  it('carries the search term in the path, because ctx.route.path has no query string', () => {
-    expect(parseRoute('_search/deep%20sea')).toEqual({ view: 'search', query: 'deep sea' });
+  it('reads the search term from the query, which is where SDK 0.9 put it', () => {
+    expect(parseRoute('_search', new URLSearchParams('q=deep sea'))).toEqual({
+      view: 'search',
+      query: 'deep sea',
+    });
   });
 
-  it('keeps a slash inside a search term', () => {
+  it('still reads the pre-0.9 path form, so an old link keeps working', () => {
+    // The term was a path segment only because the subpath was all a plugin got.
+    expect(parseRoute('_search/deep%20sea')).toEqual({ view: 'search', query: 'deep sea' });
     expect(parseRoute('_search/and%2For')).toEqual({ view: 'search', query: 'and/or' });
+  });
+
+  it('prefers the query when a link carries both', () => {
+    expect(parseRoute('_search/old', new URLSearchParams('q=new'))).toEqual({ view: 'search', query: 'new' });
   });
 
   it('falls back to the page reader for anything unrecognised', () => {
@@ -44,6 +53,7 @@ describe('parseRoute', () => {
 
 describe('routePath / routeHref', () => {
   it('round-trips every view', () => {
+    // `routePath` writes the query form; `parseRoute` is handed it back the way the host splits a URL.
     for (const route of [
       { view: 'home' },
       { view: 'page', slug: 'the-kraken' },
@@ -56,7 +66,8 @@ describe('routePath / routeHref', () => {
       { view: 'random' },
       { view: 'admin' },
     ] as const) {
-      expect(parseRoute(routePath(route))).toEqual(route);
+      const [path, search] = routePath(route).split('?');
+      expect(parseRoute(path, new URLSearchParams(search ?? ''))).toEqual(route);
     }
   });
 

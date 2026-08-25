@@ -253,7 +253,17 @@ describe('<EditorView>', () => {
   it('surfaces a refusal to the person who picked the file', async () => {
     // Only they can pick a different one, so swallowing this would leave them with a body that renders
     // nothing and no idea why.
+    //
+    // The rejection is built here rather than taken from `makeMockBlobs`, which refuses with a plain
+    // `Error`: the host refuses with a typed 415 (`isPluginApiError`, `status`), and since SDK 0.9 that
+    // status is what a component is told to branch on. Reported to the SDK; until the double carries a
+    // status, a test that used it would only prove the fallback branch.
     const blobs = makeMockBlobs({ mimeTypes: ['image/png'] });
+    blobs.upload = () =>
+      Promise.reject(Object.assign(new Error('content type not allowed'), {
+        status: 415,
+        problem: { type: 'https://mosaicast.dev/problems/blob-type-not-allowed' },
+      }));
     const ctx = ctxFor('the-kraken/edit', { blobs });
     await render(ctx);
 

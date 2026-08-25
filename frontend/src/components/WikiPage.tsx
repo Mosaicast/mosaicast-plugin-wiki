@@ -33,7 +33,7 @@ export function WikiPage({ ctx }: { ctx: PluginContext }) {
   const i18n = useMemo(() => makeI18n(ctx.locale), [ctx]);
   useEffect(() => () => i18n.dispose(), [i18n]);
 
-  const route = parseRoute(ctx.route.path);
+  const route = parseRoute(ctx.route.path, ctx.route.query);
   const mayEdit = ctx.user?.role === 'podcaster' || ctx.user?.role === 'admin';
   const index = useSiteDoc<Record<string, PageSummary>>(ctx, KEY_INDEX);
   const pages = index.data ?? {};
@@ -72,7 +72,7 @@ export function WikiPage({ ctx }: { ctx: PluginContext }) {
           <SearchView ctx={ctx} i18n={i18n} query={route.query} index={pages} go={go} />
         )}
         {!index.loading && route.view === 'tag' && (
-          <TagView i18n={i18n} tag={route.tag} index={pages} go={go} />
+          <TagView ctx={ctx} i18n={i18n} tag={route.tag} index={pages} go={go} />
         )}
         {!index.loading && route.view === 'all' && <AllPagesView i18n={i18n} index={pages} go={go} />}
         {!index.loading && route.view === 'random' && <RandomPageView ctx={ctx} i18n={i18n} index={pages} />}

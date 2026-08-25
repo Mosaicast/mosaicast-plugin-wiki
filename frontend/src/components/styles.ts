@@ -136,8 +136,8 @@ export const WIKI_CSS = ICON_CSS + `
   /* Rule 2 in icons.tsx: an unresolved var() reverts mask-image to its initial "none" and paints a solid
      square, so every reference above needs this fallback declared somewhere it inherits from. */
   .wiki { --wiki-icon-blank: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'/%3E"); }
-  .wiki__section h2 .wikiIcon, .wiki__toc h2 .wikiIcon { margin-right: .35rem; opacity: .75; }
-  .wiki__tag .wikiIcon { margin-right: .2rem; opacity: .7; }
+  .wiki__section h2 .wiki-icon, .wiki__toc h2 .wiki-icon { margin-right: .35rem; opacity: .75; }
+  .wiki__tag .wiki-icon { margin-right: .2rem; opacity: .7; }
   .wiki__sources { margin: 0; padding-left: 1.25rem; }
   .wiki__sources li { margin-bottom: .35rem; }
   .wiki__note { color: var(--mc-text-muted); }
