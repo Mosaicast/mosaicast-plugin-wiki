@@ -13,11 +13,9 @@ import { EditorView } from './EditorView';
 import { HistoryView, RevisionView } from './HistoryView';
 import { AllPagesView, RandomPageView } from './ListViews';
 import { AdminView } from './AdminView';
+import { HomeView } from './HomeView';
 import { WIKI_CSS } from './styles';
 import { Icon } from '../icons';
-
-/** How many pages the home view lists as "recently updated" before the full list takes over. */
-const RECENT_LIMIT = 8;
 
 /**
  * The wiki itself, mounted in the `page` placement behind `/p/wiki/*`.
@@ -64,7 +62,7 @@ export function WikiPage({ ctx }: { ctx: PluginContext }) {
         {index.failed && <p className="wiki__error">{i18n.t('error')}</p>}
 
         {!index.loading && !index.failed && route.view === 'home' && (
-          <HomeView i18n={i18n} index={pages} go={go} />
+          <HomeView ctx={ctx} i18n={i18n} index={pages} mayEdit={mayEdit} go={go} />
         )}
         {!index.loading && route.view === 'page' && (
           <PageView ctx={ctx} i18n={i18n} slug={route.slug} index={pages} go={go} />
@@ -108,65 +106,6 @@ export function WikiPage({ ctx }: { ctx: PluginContext }) {
             </div>
           ))}
       </div>
-    </>
-  );
-}
-
-function HomeView({
-  i18n,
-  index,
-  go,
-}: {
-  i18n: ReturnType<typeof makeI18n>;
-  index: Record<string, PageSummary>;
-  go(route: WikiRoute): (event: MouseEvent | React.MouseEvent) => void;
-}) {
-  const entries = Object.entries(index);
-  const recent = [...entries]
-    .sort(([, a], [, b]) => (b.updatedAt ?? '').localeCompare(a.updatedAt ?? ''))
-    .slice(0, RECENT_LIMIT);
-  const tags = [
-    ...new Set(entries.flatMap(([, summary]) => (summary.tags ?? '').split(',').filter(Boolean))),
-  ].sort();
-
-  if (entries.length === 0) {
-    return (
-      <div className="wiki__empty">
-        <p>{i18n.t('home.empty')}</p>
-        <p>{i18n.t('home.emptyHint')}</p>
-      </div>
-    );
-  }
-
-  return (
-    <>
-      <h1 className="wiki__title">{i18n.t('home.title')}</h1>
-      <p className="wiki__meta">{i18n.t('home.count', { n: String(entries.length) })}</p>
-
-      {tags.length > 0 && (
-        <div className="wiki__tags">
-          {tags.map((tag) => (
-            <a className="wiki__tag" key={tag} href={routeHref({ view: 'tag', tag })} onClick={go({ view: 'tag', tag })}>
-              <Icon name="tag" />
-              {tag}
-            </a>
-          ))}
-        </div>
-      )}
-
-      <h2 className="wiki__section-title">{i18n.t('home.recent')}</h2>
-      <ul className="wiki__list">
-        {recent.map(([slug, summary]) => (
-          <li className="wiki__item" key={slug}>
-            <h3>
-              <a href={routeHref({ view: 'page', slug })} onClick={go({ view: 'page', slug })}>
-                {summary.title || slug}
-              </a>
-            </h3>
-            {summary.summary && <p>{summary.summary}</p>}
-          </li>
-        ))}
-      </ul>
     </>
   );
 }

@@ -112,6 +112,17 @@ see. Core has no model of a wiki page and cannot know that `status` decides one 
 `status = published` for anyone who cannot edit**: `PageView`, `SearchProvider`, and `hasRoute`. Missing it
 in the reader meant a guessed draft URL rendered the draft.
 
+## The front page is an ordinary wiki page
+`homePageSlug` (config, default `main-page`) names it; the backend publishes its body to the `home` doc key
+and the home view renders that above the generated sections. It gets the editor, revisions, history, search
+and backlinks for nothing. **Publish nothing as an absent key, never a null** — the doc store refuses a null
+value, so storing "no front page" that way throws on every tick of a new install.
+
+## The lead is only shown when it was written
+`page.summary` is auto-derived from the first paragraph when an author gives none, so rendering it above the
+body would print that paragraph twice. The reader compares it with the body's first paragraph and shows a
+lead only when they differ.
+
 ## Page syntax (what the backend extracts and the reader renders)
 ```
 [[the-kraken]]  [[the-kraken|label]]        wiki link; unresolved -> red link

@@ -63,6 +63,15 @@ public class WikiPlugin implements PluginBackend, ShareMetadataProvider, Sitemap
     /** Doc key holding {@code slug -> summary} for every page, so the UI can list and resolve links at once. */
     static final String KEY_INDEX = "index";
 
+    /**
+     * Doc key holding the wiki's own front page, when a podcaster has written one.
+     *
+     * <p>Published rather than queried so the home view costs one read. The front page is an ordinary wiki
+     * page addressed by {@code homePageSlug}, which is the point: it gets the editor, revisions, history
+     * and search for nothing, instead of being a second kind of content with its own everything.
+     */
+    static final String KEY_HOME = "home";
+
     /** Doc key holding the counters the podcaster dashboard reads. */
     static final String KEY_STATS = "wikistats";
 
@@ -93,6 +102,9 @@ public class WikiPlugin implements PluginBackend, ShareMetadataProvider, Sitemap
 
     /** How much of a page a search result shows when it has no summary of its own. */
     private static final int SNIPPET_CHARS = 160;
+
+    /** The page the wiki's front page reads from, unless an operator points it elsewhere. */
+    private static final String DEFAULT_HOME_SLUG = "main-page";
 
     /** The namespace this plugin tags under. Opaque to the host, and nobody else can name it. */
     private static final String TAG_SUBJECT_PREFIX = "page:";
@@ -129,6 +141,15 @@ public class WikiPlugin implements PluginBackend, ShareMetadataProvider, Sitemap
             ctx.logger().warn("wiki ingest pass failed", e);
         }
         ctx.store().put(Scope.site(), KEY_INDEX, buildIndex());
+        // No front page written (or it was unpublished): remove the key rather than storing a null. The
+        // doc store refuses a null value outright, so publishing "nothing" this way would throw on every
+        // tick of a wiki nobody has written a front page for -- which is every new install.
+        HomePage home = buildHome();
+        if (home == null) {
+            ctx.store().delete(Scope.site(), KEY_HOME);
+        } else {
+            ctx.store().put(Scope.site(), KEY_HOME, home);
+        }
         ctx.store().put(Scope.site(), KEY_STATS, buildStats());
     }
 
@@ -450,6 +471,27 @@ public class WikiPlugin implements PluginBackend, ShareMetadataProvider, Sitemap
         return index;
     }
 
+    /**
+     * The front page, if the configured slug names a published page.
+     *
+     * <p>Returns {@code null} when the podcaster has not written one, or has unpublished it — the home view
+     * then shows only what it can generate, which is the state a new install is in and has to look
+     * deliberate rather than broken.
+     */
+    private HomePage buildHome() {
+        SchemaStore schema = ctx.schema();
+        String slug = ctx.config().get("homePageSlug", String.class, DEFAULT_HOME_SLUG);
+        if (schema == null || slug == null || slug.isBlank()) {
+            return null;
+        }
+        PageRow page = findPage(schema, slug.strip());
+        if (page == null || !STATUS_PUBLISHED.equals(page.status())) {
+            return null;
+        }
+        return new HomePage(page.slug(), page.title(), page.markdown(),
+                page.updatedAt() == null ? null : page.updatedAt().toString());
+    }
+
     private WikiStats buildStats() {
         SchemaStore schema = ctx.schema();
         if (schema == null) {
@@ -728,6 +770,9 @@ public class WikiPlugin implements PluginBackend, ShareMetadataProvider, Sitemap
     /** Only the parts of a {@code media} row the share preview needs. */
     record MediaRow(long id, String pageSlug, String url, String uploadRef, String kind, String provider,
                     String caption, Long position) {}
+
+    /** The wiki's front page, as the home view renders it. */
+    record HomePage(String slug, String title, String markdown, String updatedAt) {}
 
     /** One page as the frontend's index needs it. */
     record PageSummary(String title, String summary, String tags, String updatedAt) {}

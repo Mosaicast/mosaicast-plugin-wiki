@@ -235,6 +235,18 @@ export const WIKI_CSS = ICON_CSS + `
     display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
   }
 
+  /* The lead: an article's own summary, set apart from the body it introduces. */
+  .wiki__lead {
+    margin: 0 0 1.25rem; padding-left: .9rem;
+    border-left: 3px solid var(--mc-accent);
+    font-size: 1.0625rem; line-height: 1.55;
+  }
+  .wiki__intro { margin-bottom: 2rem; }
+  .wiki__intro .wiki__body > :last-child { margin-bottom: .25rem; }
+  .wiki__intro .wiki__meta { margin-top: .75rem; }
+  .wiki__random .wiki__btn { margin-top: .6rem; }
+  .wiki__random + .wiki__tags { margin-top: 1.5rem; }
+
   /* One narrow-container block, so there is a single place to look for the phone layout. */
   @container (max-width: 30rem) {
     .wiki--page { padding: 1rem .75rem 2rem; }

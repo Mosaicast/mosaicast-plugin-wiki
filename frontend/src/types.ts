@@ -97,6 +97,19 @@ export interface SourceRow {
   position: number | null;
 }
 
+/**
+ * The wiki's front page, published by the backend from an ordinary wiki page.
+ *
+ * `null` when nobody has written one — a new install, and a state the home view has to make look
+ * deliberate rather than broken.
+ */
+export interface HomePage {
+  slug: string;
+  title: string;
+  markdown: string | null;
+  updatedAt: string | null;
+}
+
 /** One page as the backend's `index` doc key summarises it. */
 export interface PageSummary {
   title: string;
@@ -123,6 +136,7 @@ export interface WikiStats {
 
 /** Backend-owned doc keys. Declared in `plugin.json` under `data.backendOwned` — read-only to a client. */
 export const KEY_INDEX = 'index';
+export const KEY_HOME = 'home';
 export const KEY_EPISODES = 'episodes';
 export const KEY_STATS = 'wikistats';
 

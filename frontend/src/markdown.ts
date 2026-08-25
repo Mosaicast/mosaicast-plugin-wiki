@@ -44,6 +44,13 @@ export interface RenderOptions {
 export interface RenderedPage {
   html: string;
   toc: TocEntry[];
+  /**
+   * The body's first paragraph as plain text.
+   *
+   * Exists so a caller can tell a *written* summary from one the backend derived — the derivation takes
+   * this same paragraph, and rendering it again as a lead would print it twice.
+   */
+  plainFirstParagraph: string;
 }
 
 const WIKI_TOKEN = /\[\[([^\]|]+?)(?:\|([^\]]*))?\]\]/g;
@@ -222,5 +229,6 @@ export function renderPage(markdown: string, options: RenderOptions): RenderedPa
     anchor.setAttribute('rel', 'noopener noreferrer');
   });
 
-  return { html: host.innerHTML, toc };
+  const firstParagraph = host.querySelector('p')?.textContent?.trim() ?? '';
+  return { html: host.innerHTML, toc, plainFirstParagraph: firstParagraph };
 }

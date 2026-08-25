@@ -123,6 +123,7 @@
     "writableBy": "podcaster",
     "backendOwned": [
       "index",
+      "home",
       "wikistats",
       "ingest:*"
     ]
@@ -143,6 +144,11 @@
     "writesEpisodes": false
   },
   "config": {
+    "homePageSlug": {
+      "type": "string",
+      "default": "main-page",
+      "editableBy": "podcaster"
+    },
     "ingestIntervalSeconds": {
       "type": "number",
       "default": 30,

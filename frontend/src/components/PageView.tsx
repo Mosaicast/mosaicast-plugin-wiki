@@ -100,7 +100,7 @@ export function PageView({ ctx, i18n, slug, index, go }: PageViewProps) {
 
   const rendered = useMemo(() => {
     if (!page) {
-      return { html: '', toc: [] as TocEntry[] };
+      return { html: '', toc: [] as TocEntry[], plainFirstParagraph: '' };
     }
     // Sources are rendered from the extracted rows below, so drop the body's own copy of that section.
     const body = sources.length > 0 ? stripSourcesSection(page.markdown ?? '') : (page.markdown ?? '');
@@ -162,6 +162,15 @@ export function PageView({ ctx, i18n, slug, index, go }: PageViewProps) {
 
   const tags = (page.tags ?? '').split(',').filter(Boolean);
 
+  // A lead paragraph, the way an encyclopedia article opens: the summary, above the contents.
+  //
+  // Shown **only when the summary was written**, not when the backend derived it from the body. The
+  // derivation takes the first paragraph, so rendering it here as well would print that paragraph twice
+  // — which is what a naive "always show the summary" does, and it looks like a bug rather than a lead.
+  const summary = (page.summary ?? '').trim();
+  const firstParagraph = (rendered.plainFirstParagraph ?? '').trim();
+  const lead = summary && summary !== firstParagraph ? summary : null;
+
   // The body's own Sources heading is stripped above, but the section still renders from the extracted
   // rows -- so the contents list has to name it, or it points at less than the reader can see.
   const contents = sources.length > 0
@@ -201,6 +210,8 @@ export function PageView({ ctx, i18n, slug, index, go }: PageViewProps) {
           ))}
         </div>
       )}
+
+      {lead && <p className="wiki__lead">{lead}</p>}
 
       {contents.length > 2 && (
         <nav className="wiki__toc" aria-label={i18n.t('page.contents')}>

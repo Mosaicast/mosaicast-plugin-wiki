@@ -194,6 +194,55 @@ class WikiExtensionPointsTest {
         assertEquals(1, schema.count("revision", Criteria.where("author", Op.EQ, "u-bob")));
     }
 
+    // --- the front page --------------------------------------------------------------------------
+
+    @Test
+    void publishesTheFrontPageWhenOneIsWritten() {
+        var ctx = new FakePluginContext(new InMemoryDocStore(),
+                new MapPluginConfig().with("homePageSlug", "main-page"),
+                new FakeFeedAccess(Map.of()), schema());
+        ctx.store().put(Scope.site(), WikiPlugin.DRAFT_PREFIX + "main-page", Map.of(
+                "title", "Welcome", "markdown", "Notes the crew keeps."));
+
+        new WikiPlugin().register(ctx);
+
+        var home = ctx.store().get(Scope.site(), WikiPlugin.KEY_HOME, WikiPlugin.HomePage.class).orElseThrow();
+        assertEquals("main-page", home.slug());
+        assertEquals("Welcome", home.title());
+    }
+
+    @Test
+    void publishesNoFrontPageKeyWhenNobodyHasWrittenOne() {
+        // The doc store refuses a null value, so "nothing to publish" has to be an absent key rather than
+        // a stored null -- otherwise every tick of a new install throws before it reaches the projections.
+        var ctx = ctx(schema());
+
+        new WikiPlugin().register(ctx);
+
+        assertTrue(ctx.store().get(Scope.site(), WikiPlugin.KEY_HOME, WikiPlugin.HomePage.class).isEmpty());
+        assertTrue(ctx.store().get(Scope.site(), WikiPlugin.KEY_INDEX, Map.class).isPresent(),
+                "the rest of the tick still runs");
+    }
+
+    @Test
+    void withdrawsTheFrontPageWhenItIsUnpublished() {
+        var ctx = new FakePluginContext(new InMemoryDocStore(),
+                new MapPluginConfig().with("homePageSlug", "main-page"),
+                new FakeFeedAccess(Map.of()), schema());
+        ctx.store().put(Scope.site(), WikiPlugin.DRAFT_PREFIX + "main-page", Map.of(
+                "title", "Welcome", "markdown", "Notes."));
+        var plugin = new WikiPlugin();
+        plugin.register(ctx);
+        assertTrue(ctx.store().get(Scope.site(), WikiPlugin.KEY_HOME, WikiPlugin.HomePage.class).isPresent());
+
+        ctx.store().put(Scope.site(), WikiPlugin.DRAFT_PREFIX + "main-page", Map.of(
+                "title", "Welcome", "markdown", "Notes.", "status", "draft", "baseRevisionNo", 1));
+        plugin.tick();
+
+        assertTrue(ctx.store().get(Scope.site(), WikiPlugin.KEY_HOME, WikiPlugin.HomePage.class).isEmpty(),
+                "an unpublished front page must stop being served");
+    }
+
     // --- the shared tag vocabulary (sdk#44, §6.1.1) ---------------------------------------------------
 
     @Test
