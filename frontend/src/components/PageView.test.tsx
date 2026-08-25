@@ -196,6 +196,45 @@ describe('<WikiPage> — reader', () => {
     expect(host.querySelector('h2#sources')).not.toBeNull();
   });
 
+  it('draws a card for a cited episode, read live rather than from a projection', async () => {
+    // ctx.feeds is what the wiki's old episode projection was standing in for: a copy of host data that
+    // went stale between ticks. One request for the whole page, never one per card.
+    const ctx = ctxFor('the-kraken');
+    ctx.feeds.displayMany = async (slugs: string[]) => {
+      expect(slugs).toEqual(['s01e02']);   // deduped, and one call
+      return {
+        s01e02: {
+          title: 'Letters from the Bottom of the Sea',
+          description: 'A deep dive.',
+          publishedAt: '2026-06-07T06:00:00Z',
+          duration: 'PT44M11S',
+          imageUrl: 'https://cdn.example.com/e2.png',
+        },
+      };
+    };
+
+    await render(ctx);
+
+    const card = host.querySelector('.wiki__epcard');
+    expect(card?.textContent).toContain('Letters from the Bottom of the Sea');
+    expect(card?.querySelector('img')?.getAttribute('src')).toBe('https://cdn.example.com/e2.png');
+    // The citation carried @12:04, so the card links to the moment.
+    expect(card?.getAttribute('href')).toContain('t=724');
+  });
+
+  it('leaves a citation the host says nothing about as a plain link', async () => {
+    // A WITHDRAWN or gated episode is absent from the answer rather than redacted, and absence must not
+    // read as a failure -- the sentence still has to work.
+    const ctx = ctxFor('the-kraken');
+    ctx.feeds.displayMany = async () => ({});
+
+    await render(ctx);
+
+    expect(host.querySelector('.wiki__epcard')).toBeNull();
+    expect(host.querySelector('a[data-ep="s01e02"]')).not.toBeNull();
+    expect(ctx.logs).toEqual([]);
+  });
+
   it('shows the tags as links into the tag view', async () => {
     const ctx = ctxFor('the-kraken');
 

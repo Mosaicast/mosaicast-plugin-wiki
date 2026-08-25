@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // SPDX-FileCopyrightText: 2026 The Mosaicast Authors
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { PluginContext } from '@mosaicast/plugin-sdk';
 import { renderPage, stripSourcesSection, type TocEntry } from '../markdown';
 import { routeHref, routePath, type WikiRoute } from '../routes';
 import type { LinkRow, PageRow, PageSummary, SourceRow } from '../types';
 import type { PluginI18n } from '../i18n';
 import { Icon } from '../icons';
+import { EpisodeCard, useEpisodeCards } from './EpisodeCards';
 
 /** The anchor for the rendered Sources section, so the contents list can point at it. */
 const SOURCES_ID = 'sources';
@@ -39,7 +40,7 @@ export function PageView({ ctx, i18n, slug, index, go }: PageViewProps) {
   const [page, setPage] = useState<PageRow | null | undefined>(undefined);
   const [backlinks, setBacklinks] = useState<LinkRow[]>([]);
   const [sources, setSources] = useState<SourceRow[]>([]);
-  const bodyRef = useRef<HTMLDivElement>(null);
+  const [body, setBody] = useState<HTMLDivElement | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -115,7 +116,6 @@ export function PageView({ ctx, i18n, slug, index, go }: PageViewProps) {
   // Wiki links inside the rendered body are ours, so they navigate in-place instead of reloading the
   // shell and every plugin bundle. They keep their href, so middle-click and crawlers still work.
   useEffect(() => {
-    const body = bodyRef.current;
     if (!body) {
       return;
     }
@@ -130,7 +130,18 @@ export function PageView({ ctx, i18n, slug, index, go }: PageViewProps) {
     };
     body.addEventListener('click', onClick);
     return () => body.removeEventListener('click', onClick);
-  }, [ctx, rendered.html]);
+  }, [ctx, body, rendered.html]);
+
+  // Cards for the episodes this page cites, read live from the host rather than from the projection the
+  // wiki used to keep. A citation the host says nothing about keeps its inline link and gets no card.
+  const snapshots = useEpisodeCards(ctx, body, rendered.html);
+  const cited = (body ? [...body.querySelectorAll('a[data-ep]')] : [])
+    .map((a) => ({
+      slug: a.getAttribute('data-ep') ?? '',
+      seconds: a.hasAttribute('data-t') ? Number(a.getAttribute('data-t')) : undefined,
+    }))
+    .filter((c, i, all) => c.slug && all.findIndex((o) => o.slug === c.slug) === i)
+    .flatMap((c) => (snapshots[c.slug] ? [{ ...c, snapshot: snapshots[c.slug] }] : []));
 
   if (page === undefined) {
     return <p className="wiki__meta">{i18n.t('loading')}</p>;
@@ -205,7 +216,25 @@ export function PageView({ ctx, i18n, slug, index, go }: PageViewProps) {
       )}
 
       {/* Sanitised in renderPage; see markdown.ts for why author markdown never reaches here verbatim. */}
-      <div className="wiki__body" ref={bodyRef} dangerouslySetInnerHTML={{ __html: rendered.html }} />
+      <div
+        className="wiki__body"
+        ref={setBody}
+        dangerouslySetInnerHTML={{ __html: rendered.html }}
+      />
+
+      {cited.length > 0 && (
+        <section className="wiki__section">
+          <h2>
+            <Icon name="music" />
+            {i18n.t('page.episodes')}
+          </h2>
+          <div className="wiki__epcards">
+            {cited.map((c) => (
+              <EpisodeCard key={c.slug} ctx={ctx} i18n={i18n} slug={c.slug} snapshot={c.snapshot} seconds={c.seconds} />
+            ))}
+          </div>
+        </section>
+      )}
 
       {sources.length > 0 && (
         <section className="wiki__section">

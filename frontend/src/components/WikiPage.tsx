@@ -12,6 +12,7 @@ import { SearchView, TagView } from './SearchView';
 import { EditorView } from './EditorView';
 import { HistoryView, RevisionView } from './HistoryView';
 import { AllPagesView, RandomPageView } from './ListViews';
+import { AdminView } from './AdminView';
 import { WIKI_CSS } from './styles';
 import { Icon } from '../icons';
 
@@ -98,11 +99,14 @@ export function WikiPage({ ctx }: { ctx: PluginContext }) {
               <p>{i18n.t('editor.notAllowed')}</p>
             </div>
           ))}
-        {!index.loading && route.view === 'admin' && (
-          <div className="wiki__empty">
-            <p>{i18n.t('soon')}</p>
-          </div>
-        )}
+        {!index.loading && route.view === 'admin' &&
+          (mayEdit ? (
+            <AdminView ctx={ctx} i18n={i18n} index={pages} go={go} />
+          ) : (
+            <div className="wiki__empty">
+              <p>{i18n.t('editor.notAllowed')}</p>
+            </div>
+          ))}
       </div>
     </>
   );

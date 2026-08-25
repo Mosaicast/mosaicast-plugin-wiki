@@ -153,11 +153,6 @@
       "default": 50,
       "editableBy": "podcaster"
     },
-    "embedsEnabled": {
-      "type": "boolean",
-      "default": true,
-      "editableBy": "podcaster"
-    },
     "blobGraceMinutes": {
       "type": "number",
       "default": 60,

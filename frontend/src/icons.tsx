@@ -45,6 +45,7 @@ export const ICON_NAMES = [
   'delete',
   'edit',
   'history',
+  'image',
   'link',
   'list-numbered',
   'music',

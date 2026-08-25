@@ -66,6 +66,11 @@ cd backend  && ./gradlew test
 cd frontend && npm test && npm run typecheck    # Vite does not type-check; tsc is what enforces it
 ```
 
+## Embeds: decided against
+No `consent` block, and no iframe providers. Uploads serve **same-origin** under `/api/`, so a page can show
+an image with no CSP host and no consent decision — and declaring any consent service would cost the whole
+site its banner-free state (§12.5) for a feature uploads already cover. External image URLs still work.
+
 ## Live testing (do this every phase)
 ```
 ./build.sh && rm -rf ../mosaicast-core/plugins/wiki && cp -r dist ../mosaicast-core/plugins/wiki
@@ -81,7 +86,10 @@ dev/screenshots.sh down
    that call's process group is reaped the JVM dies mid-test. Symptom: `curl` starts returning `000`, and
    a fresh fleeting Postgres means every schema table looks empty — which reads exactly like a bug in
    your own code. Check `docker inspect -f '{{.State.StartedAt}}' mosaicast-shots` before believing it.
-3. **Don't run `./build.sh` while the stack is up** — a second Gradle invocation can take the bootRun
+3. **Check what you actually shipped.** A build that runs in a call which then times out can leave a
+   *stale* bundle installed, and the symptom is a feature that behaves as if it were never written.
+   `grep -c <a-new-class> dist/assets/wiki.es.js` before believing a live result.
+4. **Don't run `./build.sh` while the stack is up** — a second Gradle invocation can take the bootRun
    daemon with it. Build first, install, then boot.
 Disposable and seeded only with the fictional sample feed — seeding and deleting wiki data there is free.
 Core loads plugins **at startup only**: a rebuilt backend needs a restart (a rebuilt bundle does not).

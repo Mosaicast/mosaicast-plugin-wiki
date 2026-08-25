@@ -200,6 +200,41 @@ export const WIKI_CSS = ICON_CSS + `
     background: var(--mc-surface); border-block: 1px solid var(--mc-border); user-select: none;
   }
 
+  .wiki__counters {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(7rem, 1fr));
+    gap: .5rem; margin: 0 0 1.5rem;
+  }
+  .wiki__counter {
+    padding: .6rem .8rem; background: var(--mc-surface);
+    border: 1px solid var(--mc-border); border-radius: .625rem;
+  }
+  .wiki__counter dt { margin: 0 0 .15rem; font-size: .75rem; text-transform: uppercase;
+                      letter-spacing: .05em; color: var(--mc-text-muted); }
+  .wiki__counter dd { margin: 0; font-size: 1.5rem; line-height: 1.1; }
+  .wiki__count {
+    margin-left: .4rem; padding: 0 .4rem;
+    color: var(--mc-accent-contrast); background: var(--mc-accent);
+    border-radius: 999px; font-size: .75rem; vertical-align: .1em;
+  }
+  .wiki__item code { font-size: .875em; }
+
+  .wiki__epcards { display: grid; gap: .5rem; }
+  .wiki__epcard {
+    display: flex; gap: .75rem; align-items: flex-start;
+    padding: .7rem .8rem;
+    background: var(--mc-surface); border: 1px solid var(--mc-border); border-radius: .625rem;
+    color: inherit;
+  }
+  .wiki__epcard:hover { border-color: var(--mc-accent); text-decoration: none; }
+  .wiki__epcard img { flex: none; width: 4rem; height: 4rem; object-fit: cover; border-radius: .5rem; }
+  .wiki__epcard-body { display: flex; flex-direction: column; gap: .15rem; min-width: 0; }
+  .wiki__epcard-title { color: var(--mc-accent); font-weight: 600; }
+  .wiki__epcard-meta { color: var(--mc-text-muted); font-size: .8125rem; }
+  .wiki__epcard-note {
+    color: var(--mc-text-muted); font-size: .875rem;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  }
+
   /* One narrow-container block, so there is a single place to look for the phone layout. */
   @container (max-width: 30rem) {
     .wiki--page { padding: 1rem .75rem 2rem; }
