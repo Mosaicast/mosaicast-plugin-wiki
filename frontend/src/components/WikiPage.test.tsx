@@ -108,7 +108,7 @@ describe('<WikiPage>', () => {
       .toBe('/p/wiki/the-kraken');
   });
 
-  it('sends a search to its own _search route, since the subpath carries no query string', async () => {
+  it('sends a search to its own _search route, as a query parameter', async () => {
     const ctx = makeMockCtx({ apiResponses: { 'data/site/main/index': {} } });
     await render(ctx);
 
@@ -123,6 +123,6 @@ describe('<WikiPage>', () => {
       form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
     });
 
-    expect(ctx.navigations).toContainEqual({ subpath: '_search/deep%20sea', replace: false });
+    expect(ctx.navigations).toContainEqual({ subpath: '_search?q=deep%20sea', replace: false });
   });
 });

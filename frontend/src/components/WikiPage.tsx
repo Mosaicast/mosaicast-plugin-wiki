@@ -9,6 +9,9 @@ import { KEY_INDEX, type PageSummary } from '../types';
 import { useSiteDoc } from './useDoc';
 import { PageView } from './PageView';
 import { SearchView, TagView } from './SearchView';
+import { EditorView } from './EditorView';
+import { HistoryView, RevisionView } from './HistoryView';
+import { AllPagesView, RandomPageView } from './ListViews';
 import { WIKI_CSS } from './styles';
 import { Icon } from '../icons';
 
@@ -30,7 +33,8 @@ export function WikiPage({ ctx }: { ctx: PluginContext }) {
   const i18n = useMemo(() => makeI18n(ctx.locale), [ctx]);
   useEffect(() => () => i18n.dispose(), [i18n]);
 
-  const route = parseRoute(ctx.route.path);
+  const route = parseRoute(ctx.route.path, ctx.route.query);
+  const mayEdit = ctx.user?.role === 'podcaster' || ctx.user?.role === 'admin';
   const index = useSiteDoc<Record<string, PageSummary>>(ctx, KEY_INDEX);
   const pages = index.data ?? {};
 
@@ -68,9 +72,33 @@ export function WikiPage({ ctx }: { ctx: PluginContext }) {
           <SearchView ctx={ctx} i18n={i18n} query={route.query} index={pages} go={go} />
         )}
         {!index.loading && route.view === 'tag' && (
-          <TagView i18n={i18n} tag={route.tag} index={pages} go={go} />
+          <TagView ctx={ctx} i18n={i18n} tag={route.tag} index={pages} go={go} />
         )}
-        {!index.loading && NOT_YET.includes(route.view) && (
+        {!index.loading && route.view === 'all' && <AllPagesView i18n={i18n} index={pages} go={go} />}
+        {!index.loading && route.view === 'random' && <RandomPageView ctx={ctx} i18n={i18n} index={pages} />}
+        {!index.loading && route.view === 'history' && (
+          <HistoryView ctx={ctx} i18n={i18n} slug={route.slug} go={go} />
+        )}
+        {!index.loading && route.view === 'revision' && (
+          <RevisionView ctx={ctx} i18n={i18n} slug={route.slug} revisionNo={route.revisionNo} go={go} />
+        )}
+        {!index.loading && (route.view === 'edit' || route.view === 'new') &&
+          (mayEdit ? (
+            <EditorView
+              ctx={ctx}
+              i18n={i18n}
+              slug={route.view === 'edit' ? route.slug : null}
+              index={pages}
+              go={go}
+            />
+          ) : (
+            // The host already refuses the write (data.writableBy is podcaster); this only avoids
+            // showing a form whose save could never land.
+            <div className="wiki__empty">
+              <p>{i18n.t('editor.notAllowed')}</p>
+            </div>
+          ))}
+        {!index.loading && route.view === 'admin' && (
           <div className="wiki__empty">
             <p>{i18n.t('soon')}</p>
           </div>
@@ -79,9 +107,6 @@ export function WikiPage({ ctx }: { ctx: PluginContext }) {
     </>
   );
 }
-
-/** Views phase 3 and 4 fill in. Listed rather than defaulted, so a new route cannot land here by accident. */
-const NOT_YET: WikiRoute['view'][] = ['history', 'revision', 'edit', 'new', 'admin'];
 
 function HomeView({
   i18n,

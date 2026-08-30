@@ -1,7 +1,7 @@
 {
   "id": "wiki",
   "version": "0.1.0",
-  "platformApi": "0.8.0",
+  "platformApi": "0.9.1",
   "name": "Wiki",
   "license": "AGPL-3.0-or-later",
   "author": "The Mosaicast Authors",
@@ -41,6 +41,32 @@
       "placement": "main",
       "visibleTo": "anonymous",
       "order": 200
+    }
+  ],
+  "nav": [
+    {
+      "path": "",
+      "label": "Wiki",
+      "icon": "book",
+      "visibleTo": "anonymous"
+    },
+    {
+      "path": "_all",
+      "label": "All wiki pages",
+      "icon": "list",
+      "visibleTo": "anonymous"
+    },
+    {
+      "path": "_random",
+      "label": "Random wiki page",
+      "icon": "dice",
+      "visibleTo": "anonymous"
+    },
+    {
+      "path": "_new",
+      "label": "New wiki page",
+      "icon": "compose",
+      "visibleTo": "podcaster"
     }
   ],
   "storage": {
@@ -97,7 +123,6 @@
     "writableBy": "podcaster",
     "backendOwned": [
       "index",
-      "episodes",
       "wikistats",
       "ingest:*"
     ]
@@ -113,6 +138,10 @@
       "application/pdf"
     ]
   },
+  "tags": {
+    "readsVocabulary": true,
+    "writesEpisodes": false
+  },
   "config": {
     "ingestIntervalSeconds": {
       "type": "number",
@@ -127,6 +156,11 @@
     "embedsEnabled": {
       "type": "boolean",
       "default": true,
+      "editableBy": "podcaster"
+    },
+    "blobGraceMinutes": {
+      "type": "number",
+      "default": 60,
       "editableBy": "podcaster"
     }
   }

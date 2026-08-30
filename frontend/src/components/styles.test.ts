@@ -28,13 +28,17 @@ describe('WIKI_CSS', () => {
     expect(WIKI_CSS).not.toMatch(/background-image:\s*var\(--mc-icon-/);
   });
 
-  it('gives every icon reference a blank fallback, so a missing one is not a solid square', () => {
+  it('gives every icon reference a fallback, so a missing one is not a solid square', () => {
     // An unresolved var() makes the declaration invalid at computed-value time and mask-image reverts to
-    // its initial "none" — an unmasked element painting currentColor across its whole box.
-    for (const [, reference] of WIKI_CSS.matchAll(/mask-image:\s*([^;]+);/g)) {
-      expect(reference).toContain('var(--wiki-icon-blank)');
+    // its initial "none" — an unmasked element painting currentColor across its whole box. The SDK's
+    // iconCss guarantees this for the icon rules; the episode mark is this plugin's own and must match.
+    // Asserted as the property rather than as one variable name, because the SDK inlines a blank SVG
+    // where this plugin used a custom property, and both satisfy the rule that matters.
+    const references = [...WIKI_CSS.matchAll(/mask-image:\s*var\(\s*(--[a-z0-9-]+)\s*([^)]*)\)/g)];
+    expect(references.length).toBeGreaterThan(0);
+    for (const [whole, , fallback] of references) {
+      expect(fallback.trim().startsWith(','), `no fallback: ${whole}`).toBe(true);
     }
-    expect(WIKI_CSS).toContain('--wiki-icon-blank:');
   });
 
   it('never declares into the host own token namespace', () => {

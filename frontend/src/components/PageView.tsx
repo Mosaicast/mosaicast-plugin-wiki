@@ -35,6 +35,7 @@ interface PageViewProps {
  * path buys, and the not-found state says so rather than implying the page is gone.
  */
 export function PageView({ ctx, i18n, slug, index, go }: PageViewProps) {
+  const mayEdit = ctx.user?.role === 'podcaster' || ctx.user?.role === 'admin';
   const [page, setPage] = useState<PageRow | null | undefined>(undefined);
   const [backlinks, setBacklinks] = useState<LinkRow[]>([]);
   const [sources, setSources] = useState<SourceRow[]>([]);
@@ -50,7 +51,19 @@ export function PageView({ ctx, i18n, slug, index, go }: PageViewProps) {
     setPage(undefined);
 
     Promise.all([
-      schema.select<PageRow>('page', { where: [{ field: 'slug', op: 'eq', value: slug }], size: 1 }),
+      // An unpublished page is readable only by someone who could edit it. The `readableBy: anonymous`
+      // floor opens the *surface*, not each row -- core has no model of a wiki page and cannot know that
+      // `status` decides who sees one, which is the same rule SearchProvider states out loud. Without this
+      // a visitor who guessed a draft's URL read its body.
+      schema.select<PageRow>('page', {
+        where: mayEdit
+          ? [{ field: 'slug', op: 'eq', value: slug }]
+          : [
+              { field: 'slug', op: 'eq', value: slug },
+              { field: 'status', op: 'eq', value: 'published' },
+            ],
+        size: 1,
+      }),
       schema.select<LinkRow>('link', {
         where: [
           { field: 'toSlug', op: 'eq', value: slug },
@@ -82,7 +95,7 @@ export function PageView({ ctx, i18n, slug, index, go }: PageViewProps) {
     return () => {
       cancelled = true;
     };
-  }, [ctx, slug]);
+  }, [ctx, slug, mayEdit]);
 
   const rendered = useMemo(() => {
     if (!page) {
@@ -152,6 +165,19 @@ export function PageView({ ctx, i18n, slug, index, go }: PageViewProps) {
           ? i18n.t('page.updated', { when: new Date(page.updatedAt).toLocaleDateString(ctx.locale.current()) })
           : null}
         {page.revisionNo ? ` · ${i18n.t('page.revision', { n: String(page.revisionNo) })}` : null}
+      </p>
+
+      <p className="wiki__pageactions">
+        <a href={routeHref({ view: 'history', slug })} onClick={go({ view: 'history', slug })}>
+          <Icon name="history" />
+          {i18n.t('page.history')}
+        </a>
+        {mayEdit && (
+          <a href={routeHref({ view: 'edit', slug })} onClick={go({ view: 'edit', slug })}>
+            <Icon name="edit" />
+            {i18n.t('page.edit')}
+          </a>
+        )}
       </p>
 
       {tags.length > 0 && (

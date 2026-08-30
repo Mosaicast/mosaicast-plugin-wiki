@@ -29,30 +29,30 @@
  * and a name core has not published yet renders as nothing (rule 2) rather than breaking the page.
  */
 
-/**
- * An empty SVG, used as the fallback mask for every icon.
- *
- * Masking with a document that draws nothing hides the element; falling through to `mask-image: none`
- * would show it, filled edge to edge with `currentColor`. This constant is the whole difference between
- * "old host, no icon" and "old host, a black square in every heading".
- */
-const BLANK = "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'/%3E\")";
+import { iconCss } from '@mosaicast/plugin-sdk';
 
 /**
  * The host icons this plugin draws, in the shell's own vocabulary (core's `frontend/dev/icons.txt`).
  *
- * A closed set rather than an open `string`: a typo'd token silently renders nothing (rule 2), which is
- * exactly the kind of bug that ships. Naming them here makes `<Icon name="serch" />` a compile error.
+ * A closed set rather than an open `string`: a typo'd token silently renders nothing, which is exactly
+ * the kind of bug that ships. Naming them here makes `<Icon name="serch" />` a compile error, and the
+ * SDK's `KnownIconName` catches a name core does not publish.
  */
 export const ICON_NAMES = [
   'arrow-left',
+  'check',
   'clock',
+  'delete',
+  'edit',
+  'history',
   'link',
   'list-numbered',
   'music',
   'quote',
   'search',
+  'save',
   'tag',
+  'upload',
   'warning',
 ] as const;
 
@@ -60,40 +60,29 @@ export const ICON_NAMES = [
 export type IconName = (typeof ICON_NAMES)[number];
 
 /**
- * The stylesheet behind {@link Icon} and the `::before` marks — concatenate it into a component's
- * `<style>`.
+ * The stylesheet behind {@link Icon} — concatenate it into a component's `<style>`.
  *
- * A string rather than a CSS file because each of this plugin's elements renders into its own shadow
- * root: a bundled stylesheet would land in the host document, where it could reach none of them.
+ * **The SDK builds this since 0.9.0.** It used to be hand-rolled here, and the rule that mattered was the
+ * one easiest to get wrong: every reference needs a *blank SVG* fallback, because an unresolved `var()`
+ * reverts `mask-image` to its initial `none` and paints `currentColor` across the whole box — a solid
+ * square, not a blank space. `iconCss` guarantees that, and adds the `-webkit-` prefixes this plugin's
+ * hand-rolled version was missing.
  *
- * `em` sizing throughout, so an icon scales with the text it sits beside — a tag chip and a section
- * heading get proportionate icons without either naming a pixel size.
+ * The class name is **kebab-case or the SDK throws** — at runtime, inside a render, which the host's error
+ * boundary turns into a blanked tile. `tsc` does not catch it.
  */
-export const ICON_CSS = `
-  .wikiIcon {
-    --wiki-icon-blank: ${BLANK};
-    display: inline-block;
-    flex: none;
-    width: 1em;
-    height: 1em;
-    vertical-align: -0.125em;
-    mask-size: contain;
-    mask-repeat: no-repeat;
-    mask-position: center;
-    background: currentColor;
-  }
-${ICON_NAMES.map((name) => `  .wikiIcon--${name} { mask-image: var(--mc-icon-${name}, var(--wiki-icon-blank)); }`).join('\n')}
-`;
+const ICON_CLASS = 'wiki-icon';
+
+export const ICON_CSS = iconCss(ICON_NAMES, { className: ICON_CLASS });
 
 /**
  * One host icon, as a decorative inline element.
  *
  * Always `aria-hidden`: every call site here puts an icon *beside* a real label, so announcing it would
- * read the meaning twice ("link Linked from"). An icon carrying meaning on its own would need a visible
- * or `aria-label`led name instead.
+ * read the meaning twice ("link Linked from").
  *
  * @param name the host icon to draw; see {@link ICON_NAMES}
  */
 export function Icon({ name }: { name: IconName }) {
-  return <span className={`wikiIcon wikiIcon--${name}`} aria-hidden="true" />;
+  return <span className={`${ICON_CLASS} ${ICON_CLASS}-${name}`} aria-hidden="true" />;
 }
