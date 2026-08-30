@@ -5,7 +5,8 @@ import { useEffect, useMemo, useState } from 'react';
 import type { PluginContext } from '@mosaicast/plugin-sdk';
 import { makeI18n } from '../i18n';
 import { routeHref } from '../routes';
-import type { LinkRow } from '../types';
+import { KEY_INDEX, type LinkRow, type PageSummary } from '../types';
+import { useSiteDoc } from './useDoc';
 import { WIKI_CSS } from './styles';
 
 /**
@@ -21,6 +22,7 @@ import { WIKI_CSS } from './styles';
 export function EpisodeMentions({ ctx }: { ctx: PluginContext }) {
   const i18n = useMemo(() => makeI18n(ctx.locale), [ctx]);
   const [rows, setRows] = useState<LinkRow[] | null>(null);
+  const index = useSiteDoc<Record<string, PageSummary>>(ctx, KEY_INDEX);
   const episodeSlug = ctx.scope.id;
 
   useEffect(() => {
@@ -62,7 +64,14 @@ export function EpisodeMentions({ ctx }: { ctx: PluginContext }) {
   }
 
   // One wiki page may link an episode several times; the tile lists pages, not links.
-  const bySlug = new Map(rows.map((row) => [row.fromSlug, row.label || row.fromSlug]));
+  //
+  // The label on a link is the sentence the *citing page* wrote about the episode ("the shipping-lane
+  // segment"), which reads as a title but is not one. A reader here wants to know which page mentions
+  // this episode, so the page's own title wins and the link text is only a fallback.
+  const pages = index.data ?? {};
+  const bySlug = new Map(
+    rows.map((row) => [row.fromSlug, pages[row.fromSlug]?.title || row.label || row.fromSlug]),
+  );
 
   return (
     <>

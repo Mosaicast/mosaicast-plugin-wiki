@@ -25,7 +25,7 @@ describe('plugin.json', () => {
     for (const key of ['draft:kraken', 'delete:kraken']) {
       expect(covered(key)).toBe(false);
     }
-    for (const key of ['index', 'episodes', 'wikistats', 'ingest:kraken']) {
+    for (const key of ['index', 'wikistats', 'ingest:kraken']) {
       expect(covered(key)).toBe(true);
     }
   });
@@ -60,6 +60,33 @@ describe('plugin.json', () => {
     expect(manifest.blobs.maxFileBytes).toBeLessThanOrEqual(manifest.blobs.quotaBytes);
     // A present-but-empty list is rejected too: omit the field to take the operator's list instead.
     expect(manifest.blobs.mimeTypes.length).toBeGreaterThan(0);
+  });
+
+  it('credits itself, and matches the licence this repo actually ships', () => {
+    // Shown on the host's public /about page. AGPL matches LICENSE and every SPDX header here -- the
+    // sample plugin is Apache-2.0, so this is confirmed rather than copied.
+    expect(manifest.license).toBe('AGPL-3.0-or-later');
+    expect(manifest.author).toBeTruthy();
+    expect(manifest.homepage).toContain('mosaicast-plugin-wiki');
+  });
+
+  it('pins platformApi to the contract this bundle was built against', () => {
+    // An exact major.minor match: a 0.8.x manifest is rejected outright by a 0.9.x host. The credit fields
+    // did not cause this bump -- they are unvalidated and additive; the 0.9 contract did.
+    expect(manifest.platformApi).toBe('0.9.1');
+  });
+
+  it('declares navigation entries the host will accept', () => {
+    // Rejected at load: an entry without a `page` slot, a blank label, a path that needed normalising
+    // (refused rather than quietly rewritten into a different URL), or two entries on one path.
+    expect(manifest.slots.some((slot) => slot.placement === 'page')).toBe(true);
+    const paths = manifest.nav.map((entry) => entry.path);
+    expect(new Set(paths).size).toBe(paths.length);
+    for (const entry of manifest.nav) {
+      expect(entry.label.trim()).not.toBe('');
+      expect(entry.path).toBe(entry.path.replace(/^\/+/, ''));
+      expect(entry.path.split('/')).not.toContain('..');
+    }
   });
 
   it('declares a fulltext field, which is the whole reason for a schema', () => {

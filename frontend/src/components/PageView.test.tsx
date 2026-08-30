@@ -13,7 +13,8 @@ const KRAKEN = {
   slug: 'the-kraken',
   title: 'The Kraken',
   summary: 'A very large squid.',
-  markdown: '## Sightings\n\nSeen off [[deep-sea|the deep]] and in [[episode:s01e02@12:04|the bit]].',
+  markdown:
+    '## Sightings\n\nSeen off [[deep-sea|the deep]] and in [[episode:s01e02@12:04|the bit]].\n\n## Size\n\nUnmeasured.',
   // The backend maintains this as title + tags + summary + body, because `search` takes ONE field.
   searchText: 'The Kraken\nlore,sea\nA very large squid.\nSeen off the deep.',
   tags: 'lore,sea',
@@ -81,6 +82,23 @@ describe('<WikiPage> — reader', () => {
     expect(entities).toContain('page');
     expect(entities).toContain('link');
     expect(entities).toContain('source');
+  });
+
+  it('does not show an unpublished page to a visitor who could not edit it', async () => {
+    // `readableBy: anonymous` opens the schema *surface*, not each row: core has no model of a wiki page
+    // and cannot know that `status` decides who sees one. Without the filter, guessing a draft's URL
+    // read its body.
+    const draft = { ...KRAKEN, id: 9, slug: 'half-written', title: 'Half written', status: 'draft' };
+    const ctx = makeMockCtx({
+      route: { path: 'half-written' },
+      apiResponses: { 'data/site/main/index': INDEX },
+      schema: makeMockSchema({ page: [draft], link: [], source: [], media: [], revision: [] }),
+    });
+
+    await render(ctx);
+
+    expect(host.textContent).toContain('This page does not exist yet.');
+    expect(host.textContent).not.toContain('Half written');
   });
 
   it('states that a page does not exist rather than rendering a blank tile', async () => {
@@ -159,6 +177,62 @@ describe('<WikiPage> — reader', () => {
     expect(items[0]).toContain('Wikipedia');
     expect(items[0]).toContain('accessed 2026-08');
     expect(items[1]).toContain('A book');
+  });
+
+  it('names the rendered Sources section in the contents list', async () => {
+    // The body's own heading is stripped in favour of the extracted rows, so without this the contents
+    // list would point at less than the reader can actually see.
+    const ctx = ctxFor('the-kraken', {
+      source: [
+        { id: 1, pageSlug: 'the-kraken', label: 'Wikipedia', url: 'https://en.wikipedia.org/wiki/Kraken', note: null, position: 0 },
+      ],
+    });
+
+    await render(ctx);
+
+    const toc = host.querySelector('.wiki__toc');
+    expect(toc?.textContent).toContain('Sources');
+    expect(toc?.querySelector('a[href="#sources"]')).not.toBeNull();
+    expect(host.querySelector('h2#sources')).not.toBeNull();
+  });
+
+  it('draws a card for a cited episode, read live rather than from a projection', async () => {
+    // ctx.feeds is what the wiki's old episode projection was standing in for: a copy of host data that
+    // went stale between ticks. One request for the whole page, never one per card.
+    const ctx = ctxFor('the-kraken');
+    ctx.feeds.displayMany = async (slugs: string[]) => {
+      expect(slugs).toEqual(['s01e02']);   // deduped, and one call
+      return {
+        s01e02: {
+          title: 'Letters from the Bottom of the Sea',
+          description: 'A deep dive.',
+          publishedAt: '2026-06-07T06:00:00Z',
+          duration: 'PT44M11S',
+          imageUrl: 'https://cdn.example.com/e2.png',
+        },
+      };
+    };
+
+    await render(ctx);
+
+    const card = host.querySelector('.wiki__epcard');
+    expect(card?.textContent).toContain('Letters from the Bottom of the Sea');
+    expect(card?.querySelector('img')?.getAttribute('src')).toBe('https://cdn.example.com/e2.png');
+    // The citation carried @12:04, so the card links to the moment.
+    expect(card?.getAttribute('href')).toContain('t=724');
+  });
+
+  it('leaves a citation the host says nothing about as a plain link', async () => {
+    // A WITHDRAWN or gated episode is absent from the answer rather than redacted, and absence must not
+    // read as a failure -- the sentence still has to work.
+    const ctx = ctxFor('the-kraken');
+    ctx.feeds.displayMany = async () => ({});
+
+    await render(ctx);
+
+    expect(host.querySelector('.wiki__epcard')).toBeNull();
+    expect(host.querySelector('a[data-ep="s01e02"]')).not.toBeNull();
+    expect(ctx.logs).toEqual([]);
   });
 
   it('shows the tags as links into the tag view', async () => {

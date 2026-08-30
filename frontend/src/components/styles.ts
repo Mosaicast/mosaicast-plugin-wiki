@@ -11,7 +11,9 @@
  * `style-src 'unsafe-inline'` is kept by the host precisely because a runtime-constructed shadow root
  * cannot carry a nonce, so an inline `<style>` is the supported way to do this.
  */
-export const WIKI_CSS = `
+import { ICON_CSS } from '../icons';
+
+export const WIKI_CSS = ICON_CSS + `
   :host { display: block; container-type: inline-size; }
   .wiki {
     color: var(--mc-text);
@@ -45,6 +47,7 @@ export const WIKI_CSS = `
   }
   .wiki__input:focus-visible { outline: 2px solid var(--mc-accent); outline-offset: 1px; }
   .wiki__btn {
+    display: inline-flex; align-items: center; gap: .35rem;
     padding: .5rem .9rem;
     color: var(--mc-accent-contrast);
     background: var(--mc-accent);
@@ -118,11 +121,131 @@ export const WIKI_CSS = `
   .wiki__table-wrap, .wiki__body table { display: block; overflow-x: auto; max-width: 100%; }
   /* A link to a page nobody has written yet: shown as missing rather than silently dead. */
   .wiki-link--missing { color: var(--mc-text-muted); text-decoration: underline dotted; }
-  .wiki-ep::before { content: "♪"; margin-right: .3rem; opacity: .7; }
+  /* An episode citation is marked with the shell's own icon, masked so it takes the link's colour.
+     This used to be a literal note character, which rendered as whatever emoji font the visitor had. */
+  .wiki-ep::before {
+    content: "";
+    display: inline-block;
+    width: 1em; height: 1em;
+    margin-right: .25rem;
+    vertical-align: -0.125em;
+    mask-image: var(--mc-icon-music, var(--wiki-icon-blank));
+    mask-size: contain; mask-repeat: no-repeat; mask-position: center;
+    background: currentColor;
+  }
+  /* Rule 2 in icons.tsx: an unresolved var() reverts mask-image to its initial "none" and paints a solid
+     square, so every reference above needs this fallback declared somewhere it inherits from. */
+  .wiki { --wiki-icon-blank: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'/%3E"); }
+  .wiki__section h2 .wiki-icon, .wiki__toc h2 .wiki-icon { margin-right: .35rem; opacity: .75; }
+  .wiki__tag .wiki-icon { margin-right: .2rem; opacity: .7; }
   .wiki__sources { margin: 0; padding-left: 1.25rem; }
   .wiki__sources li { margin-bottom: .35rem; }
   .wiki__note { color: var(--mc-text-muted); }
   a.wiki__tag:hover { color: var(--mc-text); border-color: var(--mc-accent); text-decoration: none; }
+
+  .wiki__pageactions { display: flex; gap: 1rem; margin: 0 0 1rem; font-size: .875rem; }
+  .wiki__field { margin-bottom: 1rem; }
+  .wiki__field label, .wiki__label {
+    display: block; margin-bottom: .3rem;
+    font-size: .8125rem; font-weight: 600; color: var(--mc-text-muted);
+  }
+  .wiki__hint { margin: .3rem 0 0; font-size: .8125rem; color: var(--mc-text-muted); }
+  /* In the bar an input is a flex child; in a field it is the whole row. */
+  .wiki__field .wiki__input { width: 100%; box-sizing: border-box; }
+  .wiki__area {
+    display: block; width: 100%; box-sizing: border-box; min-height: 18rem;
+    padding: .6rem .75rem;
+    color: var(--mc-text); background: var(--mc-bg);
+    border: 1px solid var(--mc-border); border-radius: .5rem;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .875rem; line-height: 1.55;
+    resize: vertical;
+  }
+  .wiki__area:focus-visible { outline: 2px solid var(--mc-accent); outline-offset: 1px; }
+  /* Two columns where there is room; the container query below stacks them on a phone. */
+  .wiki__editor { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; align-items: start; }
+  .wiki__preview {
+    min-height: 18rem; padding: .6rem .75rem;
+    background: var(--mc-surface); border: 1px solid var(--mc-border); border-radius: .5rem;
+  }
+  .wiki__upload { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; margin-top: .5rem; }
+  .wiki__upload .wiki__btn { cursor: pointer; }
+  .wiki__actions { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: 1.25rem; }
+  .wiki__btn--danger { color: var(--mc-text); background: transparent; border-color: var(--mc-accent-2); }
+  .wiki__btn:disabled { opacity: .6; cursor: default; }
+  .wiki__status {
+    display: flex; align-items: center; gap: .4rem;
+    margin: 1rem 0 0; padding: .6rem .8rem;
+    color: var(--mc-text-muted); background: var(--mc-surface);
+    border: 1px solid var(--mc-border); border-radius: .5rem; font-size: .875rem;
+  }
+  .wiki__status--ok { color: var(--mc-text); border-color: var(--mc-accent); }
+  /* A diff is monospace and scrolls inside itself; the page must never scroll sideways for it. */
+  .wiki__diff {
+    overflow-x: auto;
+    border: 1px solid var(--mc-border); border-radius: .5rem;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .8125rem; line-height: 1.6;
+  }
+  .wiki__diff-line { display: flex; gap: .5rem; padding: 0 .5rem; white-space: pre; }
+  .wiki__diff-no {
+    flex: none; width: 2.5rem; text-align: right;
+    color: var(--mc-text-muted); opacity: .7; user-select: none;
+  }
+  .wiki__diff-mark { flex: none; width: 1ch; user-select: none; }
+  .wiki__diff-text { flex: 1 1 auto; }
+  /* Colour alone must not carry the added/removed distinction, so every line keeps its +/- mark. */
+  .wiki__diff-line--added { background: color-mix(in oklab, var(--mc-accent) 14%, transparent); }
+  .wiki__diff-line--removed { background: color-mix(in oklab, var(--mc-accent-2) 14%, transparent); }
+  .wiki__diff-gap {
+    padding: .15rem .5rem; color: var(--mc-text-muted);
+    background: var(--mc-surface); border-block: 1px solid var(--mc-border); user-select: none;
+  }
+
+  .wiki__counters {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(7rem, 1fr));
+    gap: .5rem; margin: 0 0 1.5rem;
+  }
+  .wiki__counter {
+    padding: .6rem .8rem; background: var(--mc-surface);
+    border: 1px solid var(--mc-border); border-radius: .625rem;
+  }
+  .wiki__counter dt { margin: 0 0 .15rem; font-size: .75rem; text-transform: uppercase;
+                      letter-spacing: .05em; color: var(--mc-text-muted); }
+  .wiki__counter dd { margin: 0; font-size: 1.5rem; line-height: 1.1; }
+  .wiki__count {
+    margin-left: .4rem; padding: 0 .4rem;
+    color: var(--mc-accent-contrast); background: var(--mc-accent);
+    border-radius: 999px; font-size: .75rem; vertical-align: .1em;
+  }
+  .wiki__item code { font-size: .875em; }
+
+  .wiki__epcards { display: grid; gap: .5rem; }
+  .wiki__epcard {
+    display: flex; gap: .75rem; align-items: flex-start;
+    padding: .7rem .8rem;
+    background: var(--mc-surface); border: 1px solid var(--mc-border); border-radius: .625rem;
+    color: inherit;
+  }
+  .wiki__epcard:hover { border-color: var(--mc-accent); text-decoration: none; }
+  .wiki__epcard img { flex: none; width: 4rem; height: 4rem; object-fit: cover; border-radius: .5rem; }
+  .wiki__epcard-body { display: flex; flex-direction: column; gap: .15rem; min-width: 0; }
+  .wiki__epcard-title { color: var(--mc-accent); font-weight: 600; }
+  .wiki__epcard-meta { color: var(--mc-text-muted); font-size: .8125rem; }
+  .wiki__epcard-note {
+    color: var(--mc-text-muted); font-size: .875rem;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  }
+
+  /* The lead: an article's own summary, set apart from the body it introduces. */
+  .wiki__lead {
+    margin: 0 0 1.25rem; padding-left: .9rem;
+    border-left: 3px solid var(--mc-accent);
+    font-size: 1.0625rem; line-height: 1.55;
+  }
+  .wiki__intro { margin-bottom: 2rem; }
+  .wiki__intro .wiki__body > :last-child { margin-bottom: .25rem; }
+  .wiki__intro .wiki__meta { margin-top: .75rem; }
+  .wiki__random .wiki__btn { margin-top: .6rem; }
+  .wiki__random + .wiki__tags { margin-top: 1.5rem; }
 
   /* One narrow-container block, so there is a single place to look for the phone layout. */
   @container (max-width: 30rem) {
@@ -131,5 +254,8 @@ export const WIKI_CSS = `
     /* The bar becomes a column here, and in a column flex container flex-basis sizes the HEIGHT — so the
        row layout's "flex: 1 1 16rem" would make the search field 16rem tall instead of 16rem wide. */
     .wiki__search { flex: 0 0 auto; }
+    /* Side-by-side editing needs width the phone has not got; the preview follows the body instead. */
+    .wiki__editor { grid-template-columns: 1fr; }
+    .wiki__area, .wiki__preview { min-height: 12rem; }
   }
 `;

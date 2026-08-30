@@ -31,6 +31,16 @@ Core loads plugins **at startup only**, so every rebuild needs a restart.
 ./build.sh && MOSAICAST_PLUGINS_DIR=../mosaicast-core/plugins ./install.sh
 ```
 
+From a release, an operator can skip all of that and install by spec — GitHub Releases are the index, so
+there is no registry to register with:
+
+```bash
+MOSAICAST_PLUGINS="Mosaicast/mosaicast-plugin-wiki@v0.1.0#sha256:<digest from the release notes>"
+```
+
+Each release attaches `plugin.tgz` and publishes its SHA-256, so the spec above is pinned and auditable —
+which matters, because a plugin runs in-process and unsandboxed.
+
 ## How it stores things
 Three stores, each for what it is good at:
 

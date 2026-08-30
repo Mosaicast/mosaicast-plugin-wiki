@@ -62,6 +62,31 @@ export interface LinkRow {
   label: string | null;
 }
 
+/** A row of the `revision` entity: one saved version of a page's body. */
+export interface RevisionRow {
+  id: number;
+  pageSlug: string;
+  revisionNo: number | null;
+  title: string | null;
+  markdown: string | null;
+  comment: string | null;
+  author: string | null;
+  createdAt: string | null;
+}
+
+/**
+ * The receipt the backend leaves at `ingest:<slug>` for every attempted save.
+ *
+ * This is what makes an eventually-consistent write honest: the editor writes a draft, then watches here
+ * until the backend says what became of it, instead of claiming success the moment the PUT returns.
+ */
+export interface IngestReceipt {
+  state: 'ok' | 'conflict' | 'rejected' | 'failed' | 'deleted';
+  detail: string | null;
+  revisionNo: number | null;
+  at: string | null;
+}
+
 /** A row of the `source` entity: one entry of a page's Sources section. */
 export interface SourceRow {
   id: number;
@@ -70,6 +95,19 @@ export interface SourceRow {
   url: string | null;
   note: string | null;
   position: number | null;
+}
+
+/**
+ * The wiki's front page, published by the backend from an ordinary wiki page.
+ *
+ * `null` when nobody has written one — a new install, and a state the home view has to make look
+ * deliberate rather than broken.
+ */
+export interface HomePage {
+  slug: string;
+  title: string;
+  markdown: string | null;
+  updatedAt: string | null;
 }
 
 /** One page as the backend's `index` doc key summarises it. */
@@ -98,6 +136,7 @@ export interface WikiStats {
 
 /** Backend-owned doc keys. Declared in `plugin.json` under `data.backendOwned` — read-only to a client. */
 export const KEY_INDEX = 'index';
+export const KEY_HOME = 'home';
 export const KEY_EPISODES = 'episodes';
 export const KEY_STATS = 'wikistats';
 

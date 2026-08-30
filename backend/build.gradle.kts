@@ -31,13 +31,13 @@ repositories {
 }
 
 dependencies {
-    compileOnly("dev.mosaicast:plugin-api:0.8.0")
+    compileOnly("dev.mosaicast:plugin-api:0.9.1")
     compileOnly("org.pf4j:pf4j:3.15.0")
     annotationProcessor("org.pf4j:pf4j:3.15.0") // generates the PF4J extension index for @Extension
 
     testImplementation(platform("org.junit:junit-bom:6.1.3"))
     testImplementation("org.junit.jupiter:junit-jupiter")
-    testImplementation("dev.mosaicast:plugin-testkit:0.8.0")
+    testImplementation("dev.mosaicast:plugin-testkit:0.9.1")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 

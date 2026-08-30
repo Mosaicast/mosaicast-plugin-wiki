@@ -8,15 +8,12 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import dev.mosaicast.plugin.api.DisplaySnapshot;
 import dev.mosaicast.plugin.api.Scope;
 import dev.mosaicast.plugin.testkit.FakeFeedAccess;
 import dev.mosaicast.plugin.testkit.FakePluginContext;
 import dev.mosaicast.plugin.testkit.FakeSchemaStore;
 import dev.mosaicast.plugin.testkit.InMemoryDocStore;
 import dev.mosaicast.plugin.testkit.MapPluginConfig;
-import java.time.Duration;
-import java.time.Instant;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 
@@ -60,7 +57,6 @@ class WikiPluginTest {
         new WikiPlugin().register(ctx);
 
         assertTrue(ctx.store().get(Scope.site(), WikiPlugin.KEY_INDEX, Map.class).isPresent());
-        assertTrue(ctx.store().get(Scope.site(), WikiPlugin.KEY_EPISODES, Map.class).isPresent());
         assertTrue(ctx.store().get(Scope.site(), WikiPlugin.KEY_STATS, WikiPlugin.WikiStats.class).isPresent());
     }
 
@@ -71,37 +67,6 @@ class WikiPluginTest {
         new WikiPlugin().register(ctx);
 
         assertEquals(1, ctx.scheduledCount());
-    }
-
-    @Test
-    void projectsEpisodeSnapshotsSoAPageCanRenderACard() {
-        // The frontend cannot reach FeedAccess, so the backend copies what a card needs into the doc store.
-        var feeds = new FakeFeedAccess(Map.of(Scope.site(), java.util.List.of("the-kraken")))
-                .withDisplay("the-kraken", new DisplaySnapshot(
-                        "The Kraken", "A deep dive", "https://cdn.example/ep1.mp3",
-                        Instant.parse("2026-03-04T10:00:00Z"), Duration.ofMinutes(42),
-                        "https://cdn.example/ep1.png", "https://cdn.example/cover.png", "Ned", null));
-        var ctx = ctxWith(schema(), feeds, new MapPluginConfig());
-
-        new WikiPlugin().register(ctx);
-
-        var episodes = ctx.store().get(Scope.site(), WikiPlugin.KEY_EPISODES, Map.class).orElseThrow();
-        assertTrue(episodes.containsKey("the-kraken"));
-    }
-
-    @Test
-    void survivesAnEpisodeWithoutADisplaySnapshot() {
-        // FakeFeedAccess.display throws for an unknown id, exactly as the host does for an episode that
-        // vanished between listing and display. One missing snapshot must not cost the whole projection.
-        var feeds = new FakeFeedAccess(Map.of(Scope.site(), java.util.List.of("gone", "kept")))
-                .withDisplay("kept", new DisplaySnapshot("Kept", null, null, null, null, null, null, null, null));
-        var ctx = ctxWith(schema(), feeds, new MapPluginConfig());
-
-        new WikiPlugin().register(ctx);
-
-        var episodes = ctx.store().get(Scope.site(), WikiPlugin.KEY_EPISODES, Map.class).orElseThrow();
-        assertTrue(episodes.containsKey("kept"));
-        assertFalse(episodes.containsKey("gone"));
     }
 
     @Test

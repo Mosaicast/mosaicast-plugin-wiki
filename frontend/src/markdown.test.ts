@@ -130,12 +130,25 @@ describe('renderPage — headings and external links', () => {
 });
 
 describe('timestamps', () => {
+  // The host's `?t=` grammar (ARCHITECTURE §6.4). The same table core's util/timestamp.ts and
+  // web/TimestampParam.java are held to: one grammar, three implementations, and a link that previews as
+  // one moment and plays another is worse than one carrying no timestamp at all.
   it('reads the forms a person writes', () => {
+    expect(parseTimestamp('754')).toBe(754);
     expect(parseTimestamp('12:04')).toBe(724);
     expect(parseTimestamp('1:02:03')).toBe(3723);
-    expect(parseTimestamp('754')).toBe(754);
+    expect(parseTimestamp('1h02m03s')).toBe(3723);
+    expect(parseTimestamp('90m')).toBe(5400);
+    expect(parseTimestamp('1H')).toBe(3600);
+  });
+
+  it('drops one it cannot read', () => {
     expect(parseTimestamp('later')).toBeUndefined();
     expect(parseTimestamp(undefined)).toBeUndefined();
+    expect(parseTimestamp('')).toBeUndefined();
+    expect(parseTimestamp('h')).toBeUndefined();      // the all-optional unit pattern reads as zero without a guard
+    expect(parseTimestamp('12:70')).toBeUndefined();  // minutes and seconds are bounded, as in the host
+    expect(parseTimestamp('99999')).toBeUndefined();  // past 24h is a typo or a probe
   });
 
   it('formats them back the same way', () => {

@@ -11,7 +11,7 @@ Read both fully before writing code. Work in plan mode first.
 ### `docs/BRIEF.md` is stale — known corrections
 It predates SDK 0.4.0 and is a read-only spec, so the corrections live here instead of in it. Where it
 disagrees with the SDK working tree or `mosaicast-plugin-sample`, the latter win.
-- `platformApi` is **`0.8.0`** (exact `major.minor` match; the docs' `"1.x"` does not even parse). Pin the
+- `platformApi` is **`0.9.1`** (exact `major.minor` match; the docs' `"1.x"` does not even parse). Pin the
   same string in all four places — `plugin.json`, both gradle coordinates, `package.json`.
 - Its `site / main` slot **renders nowhere** — `main` is the *episode page body*. This plugin uses
   `placement: "page"` (scope `site`, required or `/p/wiki/*` is a real 404) plus `placement: "site"`.
@@ -32,6 +32,25 @@ links) shipped in SDK 0.8.0 / core 0.6.11+.
 - **`ctx.links.episode(slug, { t })`** for citing a moment; `ctx.links.feed(slug, …)`. Never hardcode
   `/episodes/…` or `/feeds/…`.
 - Core 0.6.12 ships its **own share dialog** on episodes, feeds and the site panel — do not build a second.
+- **`--mc-icon-*` icons** (§12.3): `iconCss(ICON_NAMES, { className })` builds the stylesheet since SDK
+  0.9 — the plugin no longer hand-rolls the mask rules or the blank fallback. **The class name must be
+  kebab-case or `iconCss` throws**, at runtime inside a render, which the host's error boundary turns into
+  a blanked tile; `tsc` does not catch it. An icon is still not a word — marks never go in a translated
+  string.
+- **The SDK's nav type and core disagree, and core wins.** `PluginNavDeclaration` says `role`; core reads
+  **`visibleTo`**. Worse than it sounds: core maps an *absent* value to **anonymous**, so following the SDK
+  type would advertise the podcaster-only entrance to everyone. Pinned in `manifest.contract.test.ts`.
+- **Credit fields** `license`/`author`/`homepage`(/`attribution`) surface on the host's `/about` page.
+  Unvalidated and additive: **never bump `platformApi` for them**, since that check is an exact
+  `major.minor` match and a bump rejects every installed plugin.
+- **Releases publish `plugin.tgz`** (`.github/workflows/release.yml`), so an operator can install by spec:
+  `MOSAICAST_PLUGINS=Mosaicast/mosaicast-plugin-wiki@v<x>#sha256:<digest>`. The asset name is load-bearing
+  and the workflow refuses a tag that disagrees with the manifest `version`.
+- **The `?t=` grammar is shared** (§6.4). `WikiMarkdown.seconds` and `markdown.ts#parseTimestamp` are the
+  *third and fourth* implementations of core's `util/timestamp.ts` / `web/TimestampParam.java`, held to
+  the same case table: `754`, `12:04`, `1:02:03`, `1h02m03s`, `90m`; bounded fields, 24 h cap, unreadable
+  values dropped. A link that previews as one moment and plays another is worse than one with no
+  timestamp — so change all four together or none.
 - **No request-time backend hook** (v1 contract, ARCHITECTURE §7.6) — hence the draft/ingest write path.
 - **Unknown subpaths under `/p/wiki/` answer 200, not 404**
   ([core#89](https://github.com/Mosaicast/mosaicast-core/issues/89)) — the reader renders its own
@@ -47,6 +66,11 @@ cd backend  && ./gradlew test
 cd frontend && npm test && npm run typecheck    # Vite does not type-check; tsc is what enforces it
 ```
 
+## Embeds: decided against
+No `consent` block, and no iframe providers. Uploads serve **same-origin** under `/api/`, so a page can show
+an image with no CSP host and no consent decision — and declaring any consent service would cost the whole
+site its banner-free state (§12.5) for a feature uploads already cover. External image URLs still work.
+
 ## Live testing (do this every phase)
 ```
 ./build.sh && rm -rf ../mosaicast-core/plugins/wiki && cp -r dist ../mosaicast-core/plugins/wiki
@@ -54,6 +78,19 @@ cd ../mosaicast-core && dev/screenshots.sh up   # :8081, fleeting PG :5433, samp
 #   dev-login: POST /api/auth/dev-login?role=podcaster|fan|admin (prime /api/meta, send X-XSRF-TOKEN)
 dev/screenshots.sh down
 ```
+**Three ways this loop lies to you, all seen in practice:**
+1. **`up` accepts a stale instance.** Its health check answers from an app that is already running, so a
+   rebuilt plugin never loads and you test the previous build. After `down`, wait until
+   `curl -sf localhost:8081/actuator/health` *fails* before `up`.
+2. **Never wrap `up` in `timeout`, and don't background it.** The app is a grandchild of the call; when
+   that call's process group is reaped the JVM dies mid-test. Symptom: `curl` starts returning `000`, and
+   a fresh fleeting Postgres means every schema table looks empty — which reads exactly like a bug in
+   your own code. Check `docker inspect -f '{{.State.StartedAt}}' mosaicast-shots` before believing it.
+3. **Check what you actually shipped.** A build that runs in a call which then times out can leave a
+   *stale* bundle installed, and the symptom is a feature that behaves as if it were never written.
+   `grep -c <a-new-class> dist/assets/wiki.es.js` before believing a live result.
+4. **Don't run `./build.sh` while the stack is up** — a second Gradle invocation can take the bootRun
+   daemon with it. Build first, install, then boot.
 Disposable and seeded only with the fictional sample feed — seeding and deleting wiki data there is free.
 Core loads plugins **at startup only**: a rebuilt backend needs a restart (a rebuilt bundle does not).
 Capture light + dark at 375×667, 768×1024, 1280×800 into `assets/screenshots/`; put them in the PR.
@@ -67,6 +104,24 @@ rm -rf node_modules package-lock.json && npm install --ignore-scripts
 # then rewrite each `"extraneous": true` to `"dev": true, "optional": true`
 npm ci && npx npm@10 ci     # both must pass before pushing
 ```
+
+## Access is per row, not per surface
+`data.readableBy: anonymous` opens the schema **surface**; it says nothing about which rows a visitor may
+see. Core has no model of a wiki page and cannot know that `status` decides one — the same rule
+`SearchProvider` states out loud, and it applies just as much to the reader. **Three places must filter
+`status = published` for anyone who cannot edit**: `PageView`, `SearchProvider`, and `hasRoute`. Missing it
+in the reader meant a guessed draft URL rendered the draft.
+
+## The front page is an ordinary wiki page
+`homePageSlug` (config, default `main-page`) names it; the backend publishes its body to the `home` doc key
+and the home view renders that above the generated sections. It gets the editor, revisions, history, search
+and backlinks for nothing. **Publish nothing as an absent key, never a null** — the doc store refuses a null
+value, so storing "no front page" that way throws on every tick of a new install.
+
+## The lead is only shown when it was written
+`page.summary` is auto-derived from the first paragraph when an author gives none, so rendering it above the
+body would print that paragraph twice. The reader compares it with the body's first paragraph and shows a
+lead only when they differ.
 
 ## Page syntax (what the backend extracts and the reader renders)
 ```
