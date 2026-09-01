@@ -89,10 +89,18 @@ cd ../mosaicast-core && dev/instance.sh up --plugins --admin  # :8081, fleeting 
 dev/instance.sh status | logs [-f] | psql | down
 ```
 `dev/screenshots.sh` is gone; `dev/instance.sh` replaced it and needs `--plugins` (the default loads none).
-Translation needs a provider: a LibreTranslate on `http://localhost:5000`, core started with
-`MOSAICAST_EXTERNAL_ALLOWED_PRIVATE_ORIGINS=http://localhost:5000` (exact origins, not a subnet), and it
-selected under **Admin → External services**. **Admin → Languages** is where a second content language is
-enabled — without one the whole language UI is correctly invisible.
+Its `status` subcommand is advertised in the usage line and **not implemented** — it exits 127.
+5. **An env var you export does not reach the app.** `up` starts `bootRun`, whose JVM is forked from the
+   long-lived Gradle daemon and inherits *its* environment, not your shell's. To set a property, either
+   pass it in `--args="… --some.property=value"` (what `instance.sh` does) or `./gradlew --stop` first and
+   export before the daemon is recreated.
+Translation needs a provider: a LibreTranslate on `http://localhost:5000` and core booted with
+`--mosaicast.external.allowed-private-origins=http://localhost:5000` (exact origins, not a subnet — the
+`MOSAICAST_EXTERNAL_ALLOWED_PRIVATE_ORIGINS` env spelling is subject to the trap above). Then
+`PUT /api/admin/external/translation/providers/libretranslate/settings {"baseUrl":…}`,
+`PUT …/translation/provider {"providerId":"libretranslate"}`, and `POST …/translation/test` to confirm.
+German is a content language on a fresh install; **Admin → Languages** is where that is changed. With one
+content language the whole language UI is correctly invisible.
 **Three ways this loop lies to you, all seen in practice:**
 1. **`up` accepts a stale instance.** Its health check answers from an app that is already running, so a
    rebuilt plugin never loads and you test the previous build. After `down`, wait until
