@@ -101,6 +101,12 @@ jobs:
             echo "::error::plugin.json platformApi=$manifest_api but backend builds against plugin-api:$gradle_api"
             exit 1
           }
+          # The test kit ships with the same anchor; a stale one compiles and then fakes an older contract.
+          testkit_api=$(grep -o 'plugin-testkit:[0-9][^"]*' backend/build.gradle.kts | cut -d: -f2)
+          [ "$manifest_api" = "$testkit_api" ] || {
+            echo "::error::plugin.json platformApi=$manifest_api but tests use plugin-testkit:$testkit_api"
+            exit 1
+          }
           echo "dist/ complete, platformApi=$manifest_api ✅"
 
       - uses: actions/upload-artifact@v7
