@@ -101,6 +101,64 @@ describe('<WikiPage> — reader', () => {
     expect(host.textContent).not.toContain('Half written');
   });
 
+  it('offers the page\'s other languages, and tags the article with the one it is in', async () => {
+    // The switcher is built off the `index` projection, which the backend publishes for published pages
+    // only -- so it can advertise a language that exists and nothing else, whoever is looking.
+    const german = {
+      'der-krake': {
+        title: 'Der Krake',
+        summary: null,
+        tags: null,
+        updatedAt: '2026-08-02T10:00:00Z',
+        locale: 'de',
+        translationOf: 'the-kraken',
+      },
+    };
+    const ctx = makeMockCtx({
+      route: { path: 'the-kraken' },
+      apiResponses: {
+        'data/site/main/index': {
+          ...INDEX,
+          'the-kraken': { ...INDEX['the-kraken'], locale: 'en', translationOf: null },
+          ...german,
+        },
+      },
+      schema: makeMockSchema({
+        page: [{ ...KRAKEN, locale: 'en', translationOf: null }],
+        link: [],
+        source: [],
+        media: [],
+        revision: [],
+      }),
+      locale: {
+        current: () => 'en',
+        onChange: () => () => {},
+        available: () => [{ code: 'en', nativeName: 'English', isDefault: true }],
+        content: () => [
+          { code: 'en', nativeName: 'English', isDefault: true },
+          { code: 'de', nativeName: 'Deutsch', isDefault: false },
+        ],
+      },
+    });
+
+    await render(ctx);
+
+    const article = host.querySelector('article');
+    expect(article?.getAttribute('lang')).toBe('en');
+    const switcher = host.querySelector('.wiki__langs');
+    expect(switcher?.textContent).toContain('Deutsch');
+    expect(switcher?.querySelector('a')?.getAttribute('hreflang')).toBe('de');
+    expect(switcher?.querySelector('.wiki__lang--current')?.textContent).toBe('English');
+  });
+
+  it('never lists a translation that is not published, since the index cannot hold one', async () => {
+    const ctx = ctxFor('the-kraken', { page: [{ ...KRAKEN, locale: 'en' }] });
+
+    await render(ctx);
+
+    expect(host.querySelector('.wiki__langs')).toBeNull();
+  });
+
   it('states that a page does not exist rather than rendering a blank tile', async () => {
     // A page the ingest tick has not applied yet is genuinely not there. Saying so beats an empty article.
     const ctx = ctxFor('nowhere');

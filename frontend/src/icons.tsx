@@ -55,6 +55,7 @@ export const ICON_NAMES = [
   'search',
   'save',
   'tag',
+  'translate',
   'upload',
   'warning',
 ] as const;

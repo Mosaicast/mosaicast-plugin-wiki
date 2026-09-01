@@ -62,6 +62,28 @@ describe('<EditorView>', () => {
     await flush();
   };
 
+  /** A site that authors in English and German — the smallest multilingual case. */
+  const bilingual = () => ({
+    current: () => 'en',
+    onChange: () => () => {},
+    available: () => [
+      { code: 'en', nativeName: 'English', isDefault: true },
+      { code: 'de', nativeName: 'Deutsch', isDefault: false },
+    ],
+    content: () => [
+      { code: 'en', nativeName: 'English', isDefault: true },
+      { code: 'de', nativeName: 'Deutsch', isDefault: false },
+    ],
+  });
+
+  const pick = async (selector: string, value: string) => {
+    const field = host.querySelector<HTMLSelectElement>(selector)!;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')!.set!.call(field, value);
+      field.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+  };
+
   const type = async (selector: string, value: string) => {
     const field = host.querySelector<HTMLInputElement | HTMLTextAreaElement>(selector)!;
     const proto = field instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
@@ -120,6 +142,93 @@ describe('<EditorView>', () => {
       tags: ['lore', 'sea'],
       baseRevisionNo: 3,
     });
+  });
+
+  it('offers no language controls on a site that authors in one language', async () => {
+    // A picker with one option and a "translation of" box nothing can answer. Both would be clutter on
+    // every wiki that is not multilingual, which is most of them.
+    const ctx = ctxFor('the-kraken/edit');
+
+    await render(ctx);
+
+    expect(host.querySelector('#wiki-locale')).toBeNull();
+    expect(host.querySelector('#wiki-translation-of')).toBeNull();
+  });
+
+  it('carries the language and the original into the draft the backend validates', async () => {
+    const ctx = ctxFor('the-kraken/edit', { locale: bilingual() });
+    await render(ctx);
+
+    await pick('#wiki-locale', 'de');
+    await submit();
+
+    expect(ctx.api.calls.find((call) => call.method === 'put')?.body).toMatchObject({
+      locale: 'de',
+      translationOf: null,
+    });
+  });
+
+  it('builds the picker from the content languages, not the ones the shell renders in', async () => {
+    // The two lists come apart on exactly this: an admin permits authoring in a language the UI does not
+    // offer. Building the editor from `available()` would refuse the language the operator asked for.
+    const ctx = ctxFor('the-kraken/edit', {
+      locale: {
+        current: () => 'en',
+        onChange: () => () => {},
+        available: () => [{ code: 'en', nativeName: 'English', isDefault: true }],
+        content: () => [
+          { code: 'en', nativeName: 'English', isDefault: true },
+          { code: 'nl', nativeName: 'Nederlands', isDefault: false },
+        ],
+      },
+    });
+
+    await render(ctx);
+
+    const codes = [...host.querySelectorAll<HTMLOptionElement>('#wiki-locale option')].map((o) => o.value);
+    expect(codes).toEqual(['', 'en', 'nl']);
+  });
+
+  it('warns before the tick that a language is already taken in that group', async () => {
+    // The backend refuses this on its next pass; saying so here means the author learns now rather than
+    // from a rejection receipt seconds later.
+    const ctx = ctxFor('a-third/edit', {
+      locale: bilingual(),
+      schema: makeMockSchema({
+        page: [KRAKEN, { ...KRAKEN, id: 3, slug: 'a-third', title: 'A third', revisionNo: 1 }],
+        link: [],
+        source: [],
+        media: [],
+        revision: [],
+      }),
+      apiResponses: {
+        'data/site/main/index': {
+          ...INDEX,
+          'der-krake': {
+            title: 'Der Krake',
+            summary: null,
+            tags: null,
+            updatedAt: null,
+            locale: 'de',
+            translationOf: 'the-kraken',
+          },
+          'a-third': {
+            title: 'A third',
+            summary: null,
+            tags: null,
+            updatedAt: null,
+            locale: null,
+            translationOf: null,
+          },
+        },
+      },
+    });
+    await render(ctx);
+
+    await pick('#wiki-locale', 'de');
+    await pick('#wiki-translation-of', 'the-kraken');
+
+    expect(host.textContent).toContain('der-krake');
   });
 
   it('says a save is queued instead of claiming it landed', async () => {

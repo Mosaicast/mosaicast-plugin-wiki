@@ -7,6 +7,7 @@ import { renderPage } from '../markdown';
 import { routeHref, routePath, toSlug, type WikiRoute } from '../routes';
 import { deleteKey, draftKey, SITE_PATH, type IngestReceipt, type PageRow, type PageSummary } from '../types';
 import type { PluginI18n } from '../i18n';
+import { defaultContentLocale, isMultilingual, localeName } from '../languages';
 import { Icon } from '../icons';
 import { describeApiError } from './useDoc';
 
@@ -64,6 +65,10 @@ export function EditorView({ ctx, i18n, slug, index, go }: EditorViewProps) {
   const [markdown, setMarkdown] = useState('');
   const [comment, setComment] = useState('');
   const [baseRevisionNo, setBaseRevisionNo] = useState<number | null>(null);
+  // The language this page is written in, and the page it translates. Both are only offered on a site that
+  // authors in more than one language -- elsewhere they would be a picker with one option.
+  const [locale, setLocale] = useState('');
+  const [translationOf, setTranslationOf] = useState('');
 
   const [save, setSave] = useState<SaveState>({ phase: 'idle' });
   const [upload, setUpload] = useState<{ busy: boolean; error: string | null }>({ busy: false, error: null });
@@ -96,6 +101,8 @@ export function EditorView({ ctx, i18n, slug, index, go }: EditorViewProps) {
           setTags((row.tags ?? '').split(',').filter(Boolean).join(', '));
           setMarkdown(row.markdown ?? '');
           setBaseRevisionNo(row.revisionNo ?? null);
+          setLocale(row.locale ?? '');
+          setTranslationOf(row.translationOf ?? '');
         }
         setLoaded(true);
       })
@@ -141,6 +148,15 @@ export function EditorView({ ctx, i18n, slug, index, go }: EditorViewProps) {
       cancelled = true;
     };
   }, [ctx]);
+
+  // A new page on a multilingual site starts in the site's default language rather than unstated: an
+  // unstated page reads as the default anyway, and leaving the picker empty is how a wiki ends up with the
+  // field on every page and a value on none. Runs once per mount, so the author can still pick anything.
+  useEffect(() => {
+    if (isNew && isMultilingual(ctx)) {
+      setLocale((current) => current || defaultContentLocale(ctx) || '');
+    }
+  }, [ctx, isNew]);
 
   useEffect(() => () => {
     if (pollRef.current != null) {
@@ -224,6 +240,8 @@ export function EditorView({ ctx, i18n, slug, index, go }: EditorViewProps) {
         author: ctx.user?.id ?? null,
         status: 'published',
         baseRevisionNo,
+        locale: locale || null,
+        translationOf: translationOf || null,
       });
     } catch (error: unknown) {
       ctx.log('warn', `wiki: draft could not be written: ${String(error)}`);
@@ -296,6 +314,27 @@ export function EditorView({ ctx, i18n, slug, index, go }: EditorViewProps) {
 
   const savedSlug = isNew ? (slugTouched ? toSlug(newSlug) : toSlug(title)) : slug;
 
+  // Language controls exist only where they mean something. On a site with one content language a picker
+  // has one option and a "translation of" box can never be answered, so neither is rendered at all.
+  const contentLocales = ctx.locale.content();
+  const multilingual = isMultilingual(ctx);
+  // Everything this page could be a translation of: any published page that is not this one and is not
+  // itself a translation. The backend collapses a chain anyway, but offering one would be misleading.
+  const originals = Object.entries(index)
+    .filter(([candidate, summary]) => candidate !== savedSlug && !summary.translationOf)
+    .sort(([, a], [, b]) => a.title.localeCompare(b.title));
+  // The backend refuses a second page in one language per group; saying so here means the author learns
+  // before the tick rather than from a rejection receipt a few seconds later.
+  const languageTaken =
+    translationOf && locale
+      ? Object.entries(index).find(
+          ([candidate, summary]) =>
+            candidate !== savedSlug &&
+            summary.locale === locale &&
+            (candidate === translationOf || summary.translationOf === translationOf),
+        )?.[0] ?? null
+      : null;
+
   return (
     <form onSubmit={onSubmit}>
       <h1 className="wiki__title">{isNew ? i18n.t('editor.newTitle') : i18n.t('editor.editTitle', { title })}</h1>
@@ -357,6 +396,55 @@ export function EditorView({ ctx, i18n, slug, index, go }: EditorViewProps) {
         )}
         <p className="wiki__hint">{i18n.t('editor.tagsHint')}</p>
       </div>
+
+      {multilingual && (
+        <div className="wiki__row">
+          <div className="wiki__field">
+            <label htmlFor="wiki-locale">{i18n.t('editor.language')}</label>
+            <select
+              id="wiki-locale"
+              className="wiki__input"
+              value={locale}
+              onChange={(event) => setLocale(event.target.value)}
+            >
+              {/* Unstated is a real answer, not a placeholder: it means "the site default", which is what
+                  every page written before this field existed says. */}
+              <option value="">{i18n.t('editor.languageUnstated')}</option>
+              {contentLocales.map((entry) => (
+                <option key={entry.code} value={entry.code}>
+                  {entry.nativeName}
+                </option>
+              ))}
+            </select>
+            <p className="wiki__hint">{i18n.t('editor.languageHint')}</p>
+          </div>
+
+          <div className="wiki__field">
+            <label htmlFor="wiki-translation-of">{i18n.t('editor.translationOf')}</label>
+            <select
+              id="wiki-translation-of"
+              className="wiki__input"
+              value={translationOf}
+              onChange={(event) => setTranslationOf(event.target.value)}
+            >
+              <option value="">{i18n.t('editor.translationOfNone')}</option>
+              {originals.map(([candidate, summary]) => (
+                <option key={candidate} value={candidate}>
+                  {summary.title}
+                  {summary.locale ? ` (${localeName(ctx, summary.locale)})` : ''}
+                </option>
+              ))}
+            </select>
+            {languageTaken ? (
+              <p className="wiki__error">
+                {i18n.t('editor.translationTaken', { slug: languageTaken })}
+              </p>
+            ) : (
+              <p className="wiki__hint">{i18n.t('editor.translationOfHint')}</p>
+            )}
+          </div>
+        </div>
+      )}
 
       <div className="wiki__editor">
         <div className="wiki__field">

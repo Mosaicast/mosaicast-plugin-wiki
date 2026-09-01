@@ -144,7 +144,27 @@ export const WIKI_CSS = ICON_CSS + `
   a.wiki__tag:hover { color: var(--mc-text); border-color: var(--mc-accent); text-decoration: none; }
 
   .wiki__pageactions { display: flex; gap: 1rem; margin: 0 0 1rem; font-size: .875rem; }
+
+  /* The language switcher: the other languages this page exists in, above the title where a reader who
+     cannot read this one looks first. Muted until hovered -- it is navigation, not part of the article. */
+  .wiki__langs {
+    display: flex; flex-wrap: wrap; align-items: center; gap: .5rem;
+    margin: 0 0 .5rem; font-size: .8125rem;
+  }
+  .wiki__langs .wiki-icon { opacity: .7; }
+  .wiki__lang { color: var(--mc-text-muted); }
+  a.wiki__lang:hover { color: var(--mc-text); }
+  .wiki__lang--current { color: var(--mc-text); font-weight: 600; }
+  /* A page's language, shown on a list row only where the site has more than one to tell apart. */
+  .wiki__langchip {
+    margin-left: .4rem; padding: 0 .35rem;
+    color: var(--mc-text-muted); border: 1px solid var(--mc-border); border-radius: .25rem;
+    font-size: .6875rem; text-transform: uppercase; letter-spacing: .03em;
+  }
+
   .wiki__field { margin-bottom: 1rem; }
+  /* Two fields side by side where there is room; the container query below stacks them. */
+  .wiki__row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
   .wiki__field label, .wiki__label {
     display: block; margin-bottom: .3rem;
     font-size: .8125rem; font-weight: 600; color: var(--mc-text-muted);
@@ -255,7 +275,7 @@ export const WIKI_CSS = ICON_CSS + `
        row layout's "flex: 1 1 16rem" would make the search field 16rem tall instead of 16rem wide. */
     .wiki__search { flex: 0 0 auto; }
     /* Side-by-side editing needs width the phone has not got; the preview follows the body instead. */
-    .wiki__editor { grid-template-columns: 1fr; }
+    .wiki__editor, .wiki__row { grid-template-columns: 1fr; }
     .wiki__area, .wiki__preview { min-height: 12rem; }
   }
 `;

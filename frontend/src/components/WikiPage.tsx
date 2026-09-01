@@ -73,7 +73,7 @@ export function WikiPage({ ctx }: { ctx: PluginContext }) {
         {!index.loading && route.view === 'tag' && (
           <TagView ctx={ctx} i18n={i18n} tag={route.tag} index={pages} go={go} />
         )}
-        {!index.loading && route.view === 'all' && <AllPagesView i18n={i18n} index={pages} go={go} />}
+        {!index.loading && route.view === 'all' && <AllPagesView ctx={ctx} i18n={i18n} index={pages} go={go} />}
         {!index.loading && route.view === 'random' && <RandomPageView ctx={ctx} i18n={i18n} index={pages} />}
         {!index.loading && route.view === 'history' && (
           <HistoryView ctx={ctx} i18n={i18n} slug={route.slug} go={go} />

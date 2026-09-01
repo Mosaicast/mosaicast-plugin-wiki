@@ -6,6 +6,7 @@ import type { PluginContext } from '@mosaicast/plugin-sdk';
 import { renderPage, stripSourcesSection, type TocEntry } from '../markdown';
 import { routeHref, routePath, type WikiRoute } from '../routes';
 import type { LinkRow, PageRow, PageSummary, SourceRow } from '../types';
+import { localeName, variantsOf } from '../languages';
 import type { PluginI18n } from '../i18n';
 import { Icon } from '../icons';
 import { EpisodeCard, useEpisodeCards } from './EpisodeCards';
@@ -162,6 +163,10 @@ export function PageView({ ctx, i18n, slug, index, go }: PageViewProps) {
 
   const tags = (page.tags ?? '').split(',').filter(Boolean);
 
+  // The other languages this page exists in. Read off the `index` projection, which holds published pages
+  // only -- so an unpublished translation cannot be advertised here to anyone, editor or not.
+  const variants = variantsOf(slug, page.translationOf ?? null, index);
+
   // A lead paragraph, the way an encyclopedia article opens: the summary, above the contents.
   //
   // Shown **only when the summary was written**, not when the backend derived it from the body. The
@@ -178,7 +183,32 @@ export function PageView({ ctx, i18n, slug, index, go }: PageViewProps) {
     : rendered.toc;
 
   return (
-    <article>
+    // `lang` is the cheapest thing this field buys and the one with the widest reach: a screen reader picks
+    // the right voice, and a browser stops offering to translate a page into the language it is already in.
+    <article lang={page.locale ?? undefined}>
+      {variants.length > 0 && (
+        <nav className="wiki__langs" aria-label={i18n.t('page.languages')}>
+          <Icon name="translate" />
+          {variants.map((variant) =>
+            variant.current ? (
+              <span className="wiki__lang wiki__lang--current" key={variant.slug} aria-current="page">
+                {localeName(ctx, variant.locale) || variant.title}
+              </span>
+            ) : (
+              <a
+                className="wiki__lang"
+                key={variant.slug}
+                lang={variant.locale ?? undefined}
+                hrefLang={variant.locale ?? undefined}
+                href={routeHref({ view: 'page', slug: variant.slug })}
+                onClick={go({ view: 'page', slug: variant.slug })}
+              >
+                {localeName(ctx, variant.locale) || variant.title}
+              </a>
+            ),
+          )}
+        </nav>
+      )}
       <h1 className="wiki__title">{page.title}</h1>
       <p className="wiki__meta">
         {page.updatedAt
