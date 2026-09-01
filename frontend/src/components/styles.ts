@@ -187,6 +187,23 @@ export const WIKI_CSS = ICON_CSS + `
     min-height: 18rem; padding: .6rem .75rem;
     background: var(--mc-surface); border: 1px solid var(--mc-border); border-radius: .5rem;
   }
+  .wiki__translate { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
+  .wiki__translate .wiki__input { flex: 0 1 14rem; }
+  /* A machine draft is walled off from the form around it: it is a proposal, not a field. */
+  .wiki__machine {
+    margin-top: .75rem; padding: .75rem;
+    background: var(--mc-surface);
+    border: 1px solid var(--mc-border); border-left: 3px solid var(--mc-accent-2);
+    border-radius: .5rem;
+  }
+  .wiki__machine h3 { margin: .25rem 0 .5rem; font-size: 1rem; }
+  .wiki__machine .wiki-icon { margin-right: .3rem; }
+  .wiki__machinebody {
+    max-height: 18rem; margin: 0; padding: .5rem .6rem; overflow: auto;
+    background: var(--mc-bg); border: 1px solid var(--mc-border); border-radius: .375rem;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .8125rem; line-height: 1.5;
+    white-space: pre-wrap; word-break: break-word;
+  }
   .wiki__upload { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; margin-top: .5rem; }
   .wiki__upload .wiki__btn { cursor: pointer; }
   .wiki__actions { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: 1.25rem; }

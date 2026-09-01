@@ -141,6 +141,10 @@
       "application/pdf"
     ]
   },
+  "external": {
+    "kinds": ["translation"],
+    "usedBy": "podcaster"
+  },
   "tags": {
     "readsVocabulary": true,
     "writesEpisodes": false

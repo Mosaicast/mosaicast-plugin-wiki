@@ -8,6 +8,7 @@ import { routeHref, routePath, toSlug, type WikiRoute } from '../routes';
 import { deleteKey, draftKey, SITE_PATH, type IngestReceipt, type PageRow, type PageSummary } from '../types';
 import type { PluginI18n } from '../i18n';
 import { defaultContentLocale, isMultilingual, localeName } from '../languages';
+import { stashTranslation, takeTranslation, translatePage, type TranslationDraft } from '../translate';
 import { Icon } from '../icons';
 import { describeApiError } from './useDoc';
 
@@ -69,6 +70,13 @@ export function EditorView({ ctx, i18n, slug, index, go }: EditorViewProps) {
   // authors in more than one language -- elsewhere they would be a picker with one option.
   const [locale, setLocale] = useState('');
   const [translationOf, setTranslationOf] = useState('');
+  const [target, setTarget] = useState('');
+  const [translation, setTranslation] =
+    useState<{ busy: boolean; draft: TranslationDraft | null; error: string | null }>({
+      busy: false,
+      draft: null,
+      error: null,
+    });
 
   const [save, setSave] = useState<SaveState>({ phase: 'idle' });
   const [upload, setUpload] = useState<{ busy: boolean; error: string | null }>({ busy: false, error: null });
@@ -148,6 +156,25 @@ export function EditorView({ ctx, i18n, slug, index, go }: EditorViewProps) {
       cancelled = true;
     };
   }, [ctx]);
+
+  // A translation the author asked to open as a new page. Taken once and cleared, so a reload finds
+  // nothing rather than a stale draft -- and so nothing machine-written was ever stored to get here.
+  useEffect(() => {
+    if (!isNew) {
+      return;
+    }
+    const parked = takeTranslation();
+    if (!parked) {
+      return;
+    }
+    setTitle(parked.title);
+    setSummary(parked.summary);
+    setMarkdown(parked.markdown);
+    setLocale(parked.locale);
+    setTranslationOf(parked.translationOf);
+    setSlugTouched(true);
+    setNewSlug(parked.slug);
+  }, [isNew]);
 
   // A new page on a multilingual site starts in the site's default language rather than unstated: an
   // unstated page reads as the default anyway, and leaving the picker empty is how a wiki ends up with the
@@ -284,6 +311,57 @@ export function EditorView({ ctx, i18n, slug, index, go }: EditorViewProps) {
         setSave({ phase: 'timeout' });
       }
     }, POLL_MS);
+  };
+
+  /**
+   * Asks the host to translate this page, and shows the answer without saving any of it.
+   *
+   * `ctx.translation` is read here rather than held: it is `null` unless the manifest declared the kind
+   * *and* the operator configured a provider, and the operator half can change while this page is open.
+   */
+  const onTranslate = async () => {
+    const client = ctx.translation;
+    if (!client || !target) {
+      return;
+    }
+    setTranslation({ busy: true, draft: null, error: null });
+    try {
+      const draft = await translatePage(
+        client,
+        { title, summary, markdown, from: locale || null },
+        target,
+      );
+      setTranslation({ busy: false, draft, error: null });
+    } catch (error: unknown) {
+      // Shown, never swallowed into the untranslated original: a reader who cannot tell a translation
+      // from an original is worse off than one who sees an error.
+      ctx.log('warn', `wiki: translation refused: ${describeApiError(error)}`);
+      setTranslation({
+        busy: false,
+        draft: null,
+        error: isPluginApiError(error) && error.status === 403
+          ? i18n.t('editor.translateForbidden')
+          : i18n.t('editor.translateFailed'),
+      });
+    }
+  };
+
+  /** Opens the machine draft as a new page, prefilled. Nothing is written until the author saves. */
+  const onOpenTranslation = () => {
+    const draft = translation.draft;
+    if (!draft || !slug) {
+      return;
+    }
+    stashTranslation({
+      slug: `${slug}-${draft.target}`,
+      title: draft.title,
+      summary: draft.summary,
+      markdown: draft.markdown,
+      locale: draft.target,
+      // A translation of a translation belongs to the same original: the backend collapses it anyway.
+      translationOf: translationOf || slug,
+    });
+    ctx.route.navigate(routePath({ view: 'new' }));
   };
 
   const onDelete = async () => {
@@ -443,6 +521,77 @@ export function EditorView({ ctx, i18n, slug, index, go }: EditorViewProps) {
               <p className="wiki__hint">{i18n.t('editor.translationOfHint')}</p>
             )}
           </div>
+        </div>
+      )}
+
+      {multilingual && !isNew && (
+        <div className="wiki__field">
+          <span className="wiki__label">{i18n.t('editor.translate')}</span>
+          <div className="wiki__translate">
+            <select
+              id="wiki-translate-target"
+              className="wiki__input"
+              aria-label={i18n.t('editor.translateInto')}
+              value={target}
+              onChange={(event) => setTarget(event.target.value)}
+            >
+              <option value="">{i18n.t('editor.translateInto')}</option>
+              {contentLocales
+                .filter((entry) => entry.code !== locale)
+                .map((entry) => (
+                  <option key={entry.code} value={entry.code}>
+                    {entry.nativeName}
+                  </option>
+                ))}
+            </select>
+            <button
+              type="button"
+              className="wiki__btn wiki__btn--ghost"
+              onClick={onTranslate}
+              // Disabled on the handle, not on a click that would 403 or 409: the host refuses a call
+              // below `external.usedBy`, and `available()` is the provider half of the same question.
+              disabled={!ctx.translation?.available() || !target || translation.busy}
+            >
+              <Icon name="translate" />
+              {translation.busy ? i18n.t('editor.translating') : i18n.t('editor.translate')}
+            </button>
+          </div>
+          {!ctx.translation && <p className="wiki__hint">{i18n.t('editor.translateUnavailable')}</p>}
+          {translation.error && <p className="wiki__error">{translation.error}</p>}
+
+          {translation.draft && (
+            <div className="wiki__machine">
+              <p className="wiki__hint">
+                <Icon name="warning" />
+                {i18n.t('editor.translateDraft')}
+              </p>
+              <h3 lang={translation.draft.target}>{translation.draft.title}</h3>
+              <pre className="wiki__machinebody" lang={translation.draft.target}>
+                {translation.draft.markdown}
+              </pre>
+              {translation.draft.kept > 0 && (
+                <p className="wiki__hint">
+                  {i18n.t('editor.translateKept', {
+                    kept: String(translation.draft.kept),
+                    total: String(translation.draft.total),
+                  })}
+                </p>
+              )}
+              <p className="wiki__hint">{i18n.t('editor.translateSourcesHint')}</p>
+              <div className="wiki__actions">
+                <button type="button" className="wiki__btn" onClick={onOpenTranslation}>
+                  {i18n.t('editor.translateOpen')}
+                </button>
+                <button
+                  type="button"
+                  className="wiki__btn wiki__btn--ghost"
+                  onClick={() => setTranslation({ busy: false, draft: null, error: null })}
+                >
+                  {i18n.t('editor.translateDiscard')}
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

@@ -4,9 +4,17 @@
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { makeMockBlobs, makeMockCtx, makeMockSchema, type MockSchemaClient } from '@mosaicast/plugin-sdk/testing';
+import {
+  apiError,
+  makeMockBlobs,
+  makeMockCtx,
+  makeMockSchema,
+  makeMockTranslation,
+  type MockSchemaClient,
+} from '@mosaicast/plugin-sdk/testing';
 import { WikiPage } from './WikiPage';
 import { flush } from '../test-utils';
+import { takeTranslation } from '../translate';
 
 const KRAKEN = {
   id: 1,
@@ -75,6 +83,14 @@ describe('<EditorView>', () => {
       { code: 'de', nativeName: 'Deutsch', isDefault: false },
     ],
   });
+
+  const click = async (selector: string) => {
+    const button = host.querySelector<HTMLButtonElement>(selector)!;
+    await act(async () => {
+      button.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    await flush();
+  };
 
   const pick = async (selector: string, value: string) => {
     const field = host.querySelector<HTMLSelectElement>(selector)!;
@@ -229,6 +245,64 @@ describe('<EditorView>', () => {
     await pick('#wiki-translation-of', 'the-kraken');
 
     expect(host.textContent).toContain('der-krake');
+  });
+
+  it('offers no translation at all when the handle is null', async () => {
+    // Two reasons, deliberately indistinguishable: this manifest did not declare `external.kinds`, or the
+    // operator configured no provider — which is every site by default. Both look like this.
+    const ctx = ctxFor('the-kraken/edit', { locale: bilingual() });
+
+    await render(ctx);
+
+    const button = host.querySelector<HTMLButtonElement>('.wiki__translate button');
+    expect(button?.disabled).toBe(true);
+    expect(host.textContent).toContain('no translation provider configured');
+  });
+
+  it('translates into the language asked for, and saves none of it', async () => {
+    const translation = makeMockTranslation();
+    const ctx = ctxFor('the-kraken/edit', { locale: bilingual(), translation });
+    await render(ctx);
+
+    await pick('#wiki-translate-target', 'de');
+    await click('.wiki__translate button');
+
+    expect(translation.requests.every((request) => request.to === 'de')).toBe(true);
+    expect(host.querySelector('.wiki__machine')?.textContent).toContain('[de]');
+    // The whole posture of this feature: a machine draft is a proposal, and nothing reached the store.
+    expect(ctx.api.calls.filter((call) => call.method === 'put')).toEqual([]);
+  });
+
+  it('says a refusal out loud rather than falling back to the untranslated original', async () => {
+    const ctx = ctxFor('the-kraken/edit', {
+      locale: bilingual(),
+      translation: makeMockTranslation({ fail: apiError(403, { detail: 'below external.usedBy' }) }),
+    });
+    await render(ctx);
+
+    await pick('#wiki-translate-target', 'de');
+    await click('.wiki__translate button');
+
+    expect(host.textContent).toContain('not allowed to use');
+    expect(host.querySelector('.wiki__machine')).toBeNull();
+  });
+
+  it('opens the draft as a new page, carrying the language and the original it belongs to', async () => {
+    const ctx = ctxFor('the-kraken/edit', { locale: bilingual(), translation: makeMockTranslation() });
+    await render(ctx);
+    await pick('#wiki-translate-target', 'de');
+    await click('.wiki__translate button');
+
+    await click('.wiki__machine .wiki__btn');
+
+    expect(ctx.navigations.map((n) => n.subpath)).toEqual(['_new']);
+    const parked = takeTranslation();
+    expect(parked).toMatchObject({
+      slug: 'the-kraken-de',
+      locale: 'de',
+      translationOf: 'the-kraken',
+    });
+    expect(parked?.markdown).toContain('[de]');
   });
 
   it('says a save is queued instead of claiming it landed', async () => {
