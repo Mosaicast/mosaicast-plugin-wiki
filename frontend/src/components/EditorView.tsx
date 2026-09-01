@@ -8,7 +8,7 @@ import { routeHref, routePath, toSlug, type WikiRoute } from '../routes';
 import { deleteKey, draftKey, SITE_PATH, type IngestReceipt, type PageRow, type PageSummary } from '../types';
 import type { PluginI18n } from '../i18n';
 import { defaultContentLocale, isMultilingual, localeName } from '../languages';
-import { stashTranslation, takeTranslation, translatePage, type TranslationDraft } from '../translate';
+import { peekTranslation, stashTranslation, translatePage, type TranslationDraft } from '../translate';
 import { Icon } from '../icons';
 import { describeApiError } from './useDoc';
 
@@ -157,13 +157,15 @@ export function EditorView({ ctx, i18n, slug, index, go }: EditorViewProps) {
     };
   }, [ctx]);
 
-  // A translation the author asked to open as a new page. Taken once and cleared, so a reload finds
-  // nothing rather than a stale draft -- and so nothing machine-written was ever stored to get here.
+  // A translation the author asked to open as a new page. Read rather than consumed: navigating re-hands
+  // `ctx`, which re-runs the index fetch, which unmounts this editor and mounts a fresh one -- a
+  // clear-on-read hand-off is swallowed by the mount that is thrown away. `WikiPage` clears it when the
+  // route leaves `_new`. Nothing machine-written was ever stored to get here.
   useEffect(() => {
     if (!isNew) {
       return;
     }
-    const parked = takeTranslation();
+    const parked = peekTranslation();
     if (!parked) {
       return;
     }

@@ -3,7 +3,15 @@
 
 import { describe, expect, it } from 'vitest';
 import type { TranslationClient, TranslationRequest } from '@mosaicast/plugin-sdk';
-import { mask, splitBlocks, stashTranslation, takeTranslation, translatePage, unmask } from './translate';
+import {
+  clearTranslation,
+  mask,
+  peekTranslation,
+  splitBlocks,
+  stashTranslation,
+  translatePage,
+  unmask,
+} from './translate';
 
 /**
  * A translator that behaves like a real one on the axis that matters: it rewrites the prose it is given
@@ -68,6 +76,19 @@ describe('mask / unmask', () => {
     const masked = mask('![A squid](blob:abc-123)')!;
     expect(masked.masked).toContain('A squid');
     expect(masked.parts).toContain('](blob:abc-123)');
+  });
+
+  it('masks a link as a matched pair, so the translator is never left an open bracket', () => {
+    // Seen for real: masking only `](target)` leaves `[Pontoppidan, 1753` unbalanced, and LibreTranslate
+    // helpfully closes it at the end of the sentence. The label still has to be translatable, so the
+    // brackets go and the words stay.
+    const masked = mask('- [Pontoppidan, 1753](https://example.org/p) — the first account')!;
+    expect(masked.masked).not.toContain('[');
+    expect(masked.masked).not.toContain(']');
+    expect(masked.masked).toContain('Pontoppidan, 1753');
+    expect(unmask(masked.masked, masked.parts)).toBe(
+      '- [Pontoppidan, 1753](https://example.org/p) — the first account',
+    );
   });
 
   it('refuses text that already looks masked, since a restore could not be told from an invention', () => {
@@ -161,18 +182,28 @@ describe('translatePage', () => {
 });
 
 describe('the hand-off to a new page', () => {
-  it('is taken once, so a reload finds nothing rather than a stale draft', () => {
-    const parked = {
-      slug: 'the-kraken-de',
-      title: 'Der Krake',
-      summary: '',
-      markdown: 'Ein Tintenfisch.',
-      locale: 'de',
-      translationOf: 'the-kraken',
-    };
+  const parked = {
+    slug: 'the-kraken-de',
+    title: 'Der Krake',
+    summary: '',
+    markdown: 'Ein Tintenfisch.',
+    locale: 'de',
+    translationOf: 'the-kraken',
+  };
+
+  it('survives being read twice, because the editor mounts twice', () => {
+    // Not a hypothetical: navigating re-hands `ctx`, the index refetches, and the editor that read the
+    // value first is the one React throws away. Clear-on-read produced an empty form and no error.
     stashTranslation(parked);
 
-    expect(takeTranslation()).toEqual(parked);
-    expect(takeTranslation()).toBeNull();
+    expect(peekTranslation()).toEqual(parked);
+    expect(peekTranslation()).toEqual(parked);
+  });
+
+  it('is dropped when the view says the editor moved on', () => {
+    stashTranslation(parked);
+    clearTranslation();
+
+    expect(peekTranslation()).toBeNull();
   });
 });

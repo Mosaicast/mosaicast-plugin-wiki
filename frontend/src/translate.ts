@@ -34,15 +34,34 @@ import type { TranslationClient } from '@mosaicast/plugin-sdk';
 /** The token shape masked constructs are replaced by. Alphanumeric, so no translator treats it as markup. */
 const TOKEN = (n: number) => `MCWIKI${n}X`;
 
-/** Anything that must survive a translation byte for byte, most specific first. */
-const MASKED: RegExp[] = [
+/**
+ * What is masked before a markdown link, most specific first.
+ *
+ * Order is load-bearing throughout: `[[wiki links]]` go before {@link LINK} so one cannot be read as a
+ * label, and a bare URL goes *after* it — a `\S+` URL pattern run first swallows the `)` closing a link's
+ * target and leaves nothing for the link pattern to match.
+ */
+const BEFORE_LINKS: RegExp[] = [
   /<!--[\s\S]*?-->/g, // an HTML comment
   /`[^`\n]*`/g, // inline code
   /\[\[[^\]\n]*\]\]/g, // a wiki or episode link, whole: a translated slug resolves nowhere
-  /\]\([^)\s]*(?:\s+"[^"]*")?\)/g, // the target half of a link or image — the label stays translatable
-  /<\/?[a-zA-Z][^>\n]*>/g, // an inline HTML tag
-  /\bhttps?:\/\/\S+/g, // a bare URL
 ];
+
+/** And after: what is left once every link's target is already a token. */
+const AFTER_LINKS: RegExp[] = [
+  /<\/?[a-zA-Z][^>\n]*>/g, // an inline HTML tag
+  /\bhttps?:\/\/[^\s<>()]+/g, // a bare URL, stopping short of the bracket that may be closing something
+];
+
+/**
+ * A markdown link or image: `[label](target)`, `![caption](blob:ref)`.
+ *
+ * **Masked as a matched pair, not as one blob and not as a trailing half.** The label is prose and has to
+ * be translated; the target is an address and must not be touched. Masking only the `](target)` half does
+ * both of those and leaves the translator an *unbalanced* `[` — which a real one closes for you, at the
+ * end of the sentence, in the middle of a page. Seen against LibreTranslate; the pair is the fix.
+ */
+const LINK = /(!?\[)([^\]\n]*)(\]\([^)\s]*(?:\s+"[^"]*")?\))/g;
 
 /** The marker a line carries in its own right, lifted off before translating and put back after. */
 const LINE_MARKER = /^(\s*(?:#{1,6}\s+|[-*+]\s+|\d+\.\s+|>\s+)?)([\s\S]*)$/;
@@ -122,12 +141,18 @@ export function mask(text: string): { masked: string; parts: string[] } | null {
     return null;
   }
   const parts: string[] = [];
+  const take = (found: string) => {
+    parts.push(found);
+    return TOKEN(parts.length - 1);
+  };
   let masked = text;
-  for (const pattern of MASKED) {
-    masked = masked.replace(pattern, (found) => {
-      parts.push(found);
-      return TOKEN(parts.length - 1);
-    });
+  for (const pattern of BEFORE_LINKS) {
+    masked = masked.replace(pattern, take);
+  }
+  masked = masked.replace(LINK, (_all, open: string, label: string, close: string) =>
+    `${take(open)}${label}${take(close)}`);
+  for (const pattern of AFTER_LINKS) {
+    masked = masked.replace(pattern, take);
   }
   return { masked, parts };
 }
@@ -256,9 +281,14 @@ export async function translatePage(
  *
  * **Module state, deliberately, and the alternative is worse.** The only other way to carry a body from
  * one editor mount to the next is the doc store — which would mean *writing* machine output, the one thing
- * this whole file refuses to do. `ctx.route.navigate` is a client-side move within one bundle, so this
- * survives exactly as long as it needs to and no longer: {@link takeTranslation} clears it on read, so a
- * reload or a second visit finds nothing rather than a stale draft.
+ * this whole file refuses to do. `ctx.route.navigate` is a client-side move within one bundle, so module
+ * state survives it; a reload does not, and finding nothing after one is the right answer.
+ *
+ * **Read it, do not consume it.** The obvious design — clear on read — was written first and did not
+ * work: navigating re-hands `ctx`, which re-runs the index fetch, which unmounts the editor and mounts a
+ * fresh one. The *discarded* mount reads the value and the surviving one finds nothing, and the symptom is
+ * an empty new-page form with no error anywhere. So {@link peekTranslation} is idempotent and
+ * {@link clearTranslation} is called by the view that knows the editor has moved on.
  */
 export interface PendingTranslation {
   slug: string;
@@ -277,12 +307,20 @@ export function stashTranslation(draft: PendingTranslation): void {
 }
 
 /**
- * Takes the parked translation, if there is one.
+ * Reads the parked translation without consuming it, so a remount mid-navigation cannot swallow it.
  *
- * @returns the draft, cleared on read so it is used once
+ * @returns the draft, or `null` when nothing is parked
  */
-export function takeTranslation(): PendingTranslation | null {
-  const taken = pending;
+export function peekTranslation(): PendingTranslation | null {
+  return pending;
+}
+
+/**
+ * Drops the parked translation.
+ *
+ * Called when the editor leaves the new-page route: an author who navigated away rather than saving has
+ * discarded it, and finding it again on their next new page would be a body they did not ask for.
+ */
+export function clearTranslation(): void {
   pending = null;
-  return taken;
 }

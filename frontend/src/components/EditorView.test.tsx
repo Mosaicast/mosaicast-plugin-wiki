@@ -14,7 +14,7 @@ import {
 } from '@mosaicast/plugin-sdk/testing';
 import { WikiPage } from './WikiPage';
 import { flush } from '../test-utils';
-import { takeTranslation } from '../translate';
+import { clearTranslation, peekTranslation } from '../translate';
 
 const KRAKEN = {
   id: 1,
@@ -296,7 +296,8 @@ describe('<EditorView>', () => {
     await click('.wiki__machine .wiki__btn');
 
     expect(ctx.navigations.map((n) => n.subpath)).toEqual(['_new']);
-    const parked = takeTranslation();
+    const parked = peekTranslation();
+    clearTranslation();
     expect(parked).toMatchObject({
       slug: 'the-kraken-de',
       locale: 'de',

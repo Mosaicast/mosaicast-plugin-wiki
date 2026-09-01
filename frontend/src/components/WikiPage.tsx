@@ -15,6 +15,7 @@ import { AllPagesView, RandomPageView } from './ListViews';
 import { AdminView } from './AdminView';
 import { HomeView } from './HomeView';
 import { WIKI_CSS } from './styles';
+import { clearTranslation } from '../translate';
 import { Icon } from '../icons';
 
 /**
@@ -33,6 +34,15 @@ export function WikiPage({ ctx }: { ctx: PluginContext }) {
   useEffect(() => () => i18n.dispose(), [i18n]);
 
   const route = parseRoute(ctx.route.path, ctx.route.query);
+
+  // A machine translation is parked in memory for the new-page editor to pick up. Dropping it here, rather
+  // than when the editor reads it, is what makes the hand-off survive the editor's own remount on
+  // navigation -- and an author who left without saving has discarded it either way.
+  useEffect(() => {
+    if (route.view !== 'new') {
+      clearTranslation();
+    }
+  }, [route.view]);
   const mayEdit = ctx.user?.role === 'podcaster' || ctx.user?.role === 'admin';
   const index = useSiteDoc<Record<string, PageSummary>>(ctx, KEY_INDEX);
   const pages = index.data ?? {};
