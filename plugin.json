@@ -79,6 +79,8 @@
         "searchText": "text:fulltext",
         "tags": "string:indexed",
         "status": "string:indexed",
+        "locale": "string:indexed",
+        "translationOf": "string:indexed",
         "createdAt": "timestamp",
         "updatedAt": "timestamp:indexed",
         "updatedBy": "string",

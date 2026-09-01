@@ -38,6 +38,9 @@ dependencies {
     testImplementation(platform("org.junit:junit-bom:6.1.3"))
     testImplementation("org.junit.jupiter:junit-jupiter")
     testImplementation("dev.mosaicast:plugin-testkit:0.11.0")
+    // Test-only: WikiSchemaFixture builds the FakeSchemaStore by reading plugin.json, so a schema field
+    // added to the manifest cannot be forgotten in four hand-transcribed test fixtures.
+    testImplementation("tools.jackson.core:jackson-databind:3.2.1")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
