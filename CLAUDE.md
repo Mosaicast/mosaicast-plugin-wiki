@@ -11,14 +11,17 @@ Read both fully before writing code. Work in plan mode first.
 ### `docs/BRIEF.md` is stale — known corrections
 It predates SDK 0.4.0 and is a read-only spec, so the corrections live here instead of in it. Where it
 disagrees with the SDK working tree or `mosaicast-plugin-sample`, the latter win.
-- `platformApi` is **`0.9.1`** (exact `major.minor` match; the docs' `"1.x"` does not even parse). Pin the
-  same string in all four places — `plugin.json`, both gradle coordinates, `package.json`.
+- `platformApi` is **`0.11.0`** (exact `major.minor` match; the docs' `"1.x"` does not even parse). Pin the
+  same string in all four places — `plugin.json`, both gradle coordinates, `package.json`. Nothing is a
+  literal: `manifest.test.ts` compares the manifest and the npm pin against the SDK's own
+  `PLATFORM_API_VERSION`, and `ci.yml` compares the manifest against both gradle coordinates.
 - Its `site / main` slot **renders nowhere** — `main` is the *episode page body*. This plugin uses
   `placement: "page"` (scope `site`, required or `/p/wiki/*` is a real 404) plus `placement: "site"`.
   `placement: "admin"` also validates but renders nowhere, so podcaster tooling lives at `/p/wiki/_admin`.
 - It has no `data` block. Absent, `readableBy` defaults to the **write** floor and anonymous reads 403 —
   against its own DoD. `readableBy: "anonymous"` is declared explicitly.
 - Consent is `consent.services[]`; its `{ categories, externalSources }` shape is rejected since 0.4.0.
+- It predates languages: §30's "page content is author data" holds; `page.locale` only makes it readable.
 
 ### Platform surfaces this plugin depends on
 Both gaps this repo filed are **closed** — [core#81](https://github.com/Mosaicast/mosaicast-core/issues/81)
@@ -27,34 +30,41 @@ links) shipped in SDK 0.8.0 / core 0.6.11+.
 - **`ctx.blobs`** (manifest `blobs` block; `null` without one). **Store the `ref`, never the URL** —
   `urlFor(ref)` is derived at render time. **Nothing collects orphans**: the ingest tick deletes what the
   wiki stops pointing at. `quota()` is the only honest source for the effective limits (an admin grant
-  *replaces* the manifest's ask). **SVG is never storable.** Uploads are served same-origin under `/api/`,
-  so they need no CSP host and make no consent decision — prefer them to external URLs.
+  *replaces* the manifest's ask). **SVG is never storable.** Uploads are same-origin under `/api/`, so they
+  need no CSP host and make no consent decision — prefer them to external URLs.
 - **`ctx.links.episode(slug, { t })`** for citing a moment; `ctx.links.feed(slug, …)`. Never hardcode
   `/episodes/…` or `/feeds/…`.
 - Core 0.6.12 ships its **own share dialog** on episodes, feeds and the site panel — do not build a second.
-- **`--mc-icon-*` icons** (§12.3): `iconCss(ICON_NAMES, { className })` builds the stylesheet since SDK
-  0.9 — the plugin no longer hand-rolls the mask rules or the blank fallback. **The class name must be
-  kebab-case or `iconCss` throws**, at runtime inside a render, which the host's error boundary turns into
-  a blanked tile; `tsc` does not catch it. An icon is still not a word — marks never go in a translated
-  string.
+- **`--mc-icon-*` icons** (§12.3): `iconCss(ICON_NAMES, { className })` builds the stylesheet since SDK 0.9.
+  **The class name must be kebab-case or `iconCss` throws** — at runtime inside a render, which the error
+  boundary turns into a blanked tile; `tsc` does not catch it. An icon is not a word: never in a string.
 - **The SDK's nav type and core disagree, and core wins.** `PluginNavDeclaration` says `role`; core reads
   **`visibleTo`**. Worse than it sounds: core maps an *absent* value to **anonymous**, so following the SDK
   type would advertise the podcaster-only entrance to everyone. Pinned in `manifest.contract.test.ts`.
-- **Credit fields** `license`/`author`/`homepage`(/`attribution`) surface on the host's `/about` page.
-  Unvalidated and additive: **never bump `platformApi` for them**, since that check is an exact
-  `major.minor` match and a bump rejects every installed plugin.
-- **Releases publish `plugin.tgz`** (`.github/workflows/release.yml`), so an operator can install by spec:
-  `MOSAICAST_PLUGINS=Mosaicast/mosaicast-plugin-wiki@v<x>#sha256:<digest>`. The asset name is load-bearing
-  and the workflow refuses a tag that disagrees with the manifest `version`.
+- **Credit fields** `license`/`author`/`homepage`(/`attribution`) surface on `/about`. Unvalidated and
+  additive: **never bump `platformApi` for them** — the check is exact and a bump rejects every plugin.
+- **Releases publish `plugin.tgz`** (`release.yml`) — install by spec
+  `MOSAICAST_PLUGINS=Mosaicast/mosaicast-plugin-wiki@v<x>#sha256:<digest>`. The asset name is load-bearing;
+  the workflow refuses a tag disagreeing with the manifest `version`.
 - **The `?t=` grammar is shared** (§6.4). `WikiMarkdown.seconds` and `markdown.ts#parseTimestamp` are the
   *third and fourth* implementations of core's `util/timestamp.ts` / `web/TimestampParam.java`, held to
   the same case table: `754`, `12:04`, `1:02:03`, `1h02m03s`, `90m`; bounded fields, 24 h cap, unreadable
   values dropped. A link that previews as one moment and plays another is worse than one with no
   timestamp — so change all four together or none.
 - **No request-time backend hook** (v1 contract, ARCHITECTURE §7.6) — hence the draft/ingest write path.
-- **Unknown subpaths under `/p/wiki/` answer 200, not 404**
-  ([core#89](https://github.com/Mosaicast/mosaicast-core/issues/89)) — the reader renders its own
-  not-found view, but crawlers will index typos until core gains a route-existence hook.
+- **Unknown subpaths are a real 404** since core 0.6.22 ([core#89], closed) — `hasRoute` answers, and
+  **the empty subpath is our own root**: a lookup over slugs alone 404s the landing page.
+- **`ctx.locales()` / `ctx.locale.content()`** are the site's *content* languages — what an admin permits
+  text to be **authored** in, which is a different list from `available()` (what the shell can render in).
+  Every language control here comes from `content()`; `isContentLocale` validates on ingest, because the
+  browser's list is a hint and what reaches storage is input.
+- **`ctx.translation` has two indistinguishable ways of being `null`** — this manifest's `external.kinds`,
+  or the operator's provider choice, which moves under a running plugin. **Read it at the point of use,
+  never cache it.** `usedBy: podcaster` is the floor the host enforces on the browser call (403 below it);
+  Java's `ctx.translation()` is gated on the declared kind alone.
+- **Two SEO surfaces cannot carry a page's language.** `SitemapUrl(loc, lastModified)` has no `hreflang`
+  and `OgMeta(title, description, imageUrl)` has no `og:locale`, so the translation group is invisible to
+  crawlers. Worth filing against core, in the shape of core#81/#82.
 
 ## Tech stack
 Java 21 (Gradle, PF4J extension) · React + Vite (Web Component)
@@ -67,17 +77,22 @@ cd frontend && npm test && npm run typecheck    # Vite does not type-check; tsc 
 ```
 
 ## Embeds: decided against
-No `consent` block, and no iframe providers. Uploads serve **same-origin** under `/api/`, so a page can show
-an image with no CSP host and no consent decision — and declaring any consent service would cost the whole
-site its banner-free state (§12.5) for a feature uploads already cover. External image URLs still work.
+No `consent` block, no iframe providers. Uploads are same-origin under `/api/`, so a page shows an image
+with no CSP host and no consent decision — and any consent service would cost the site its banner-free
+state (§12.5) for a feature uploads already cover. External image URLs still work.
 
 ## Live testing (do this every phase)
 ```
 ./build.sh && rm -rf ../mosaicast-core/plugins/wiki && cp -r dist ../mosaicast-core/plugins/wiki
-cd ../mosaicast-core && dev/screenshots.sh up   # :8081, fleeting PG :5433, sample feed seeded
+cd ../mosaicast-core && dev/instance.sh up --plugins --admin  # :8081, fleeting PG :5433, sample feed
 #   dev-login: POST /api/auth/dev-login?role=podcaster|fan|admin (prime /api/meta, send X-XSRF-TOKEN)
-dev/screenshots.sh down
+dev/instance.sh status | logs [-f] | psql | down
 ```
+`dev/screenshots.sh` is gone; `dev/instance.sh` replaced it and needs `--plugins` (the default loads none).
+Translation needs a provider: a LibreTranslate on `http://localhost:5000`, core started with
+`MOSAICAST_EXTERNAL_ALLOWED_PRIVATE_ORIGINS=http://localhost:5000` (exact origins, not a subnet), and it
+selected under **Admin → External services**. **Admin → Languages** is where a second content language is
+enabled — without one the whole language UI is correctly invisible.
 **Three ways this loop lies to you, all seen in practice:**
 1. **`up` accepts a stale instance.** Its health check answers from an app that is already running, so a
    rebuilt plugin never loads and you test the previous build. After `down`, wait until
@@ -91,7 +106,7 @@ dev/screenshots.sh down
    `grep -c <a-new-class> dist/assets/wiki.es.js` before believing a live result.
 4. **Don't run `./build.sh` while the stack is up** — a second Gradle invocation can take the bootRun
    daemon with it. Build first, install, then boot.
-Disposable and seeded only with the fictional sample feed — seeding and deleting wiki data there is free.
+Disposable, seeded only with the fictional sample feed — writing and deleting wiki data there is free.
 Core loads plugins **at startup only**: a rebuilt backend needs a restart (a rebuilt bundle does not).
 Capture light + dark at 375×667, 768×1024, 1280×800 into `assets/screenshots/`; put them in the PR.
 
@@ -112,6 +127,10 @@ see. Core has no model of a wiki page and cannot know that `status` decides one 
 `status = published` for anyone who cannot edit**: `PageView`, `SearchProvider`, and `hasRoute`. Missing it
 in the reader meant a guessed draft URL rendered the draft.
 
+The language switcher is the fourth place it *would* have applied, and does not: it is built from the
+`index` projection, which holds published pages only, so a draft translation is unlistable **by
+construction** rather than by a filter someone could forget. Prefer that shape when adding a view.
+
 ## The front page is an ordinary wiki page
 `homePageSlug` (config, default `main-page`) names it; the backend publishes its body to the `home` doc key
 and the home view renders that above the generated sections. It gets the editor, revisions, history, search
@@ -122,6 +141,21 @@ value, so storing "no front page" that way throws on every tick of a new install
 `page.summary` is auto-derived from the first paragraph when an author gives none, so rendering it above the
 body would print that paragraph twice. The reader compares it with the body's first paragraph and shows a
 lead only when they differ.
+
+## Languages, and the translation graph
+`page.locale` is the language a page is **written** in (from `content()`, never `available()`); unstated
+means the site default and is what every pre-existing page says. `page.translationOf` names the original,
+and the graph is a **star, never a chain**: a draft naming another translation is collapsed one hop, and a
+page others translate cannot itself become a translation. One page per language per group — a switcher can
+only offer one. `WikiPlugin.ingestOne` is where all of it is enforced, because nothing runs at request
+time; the editor's dropdowns are a convenience.
+
+Machine translation (`translate.ts`) never writes. **Markdown is neither `'text'` nor `'html'`** — the body
+is split into blocks (fences whole), line markers are lifted off, and links/citations/targets/code/URLs are
+masked into `MCWIKI<n>X` tokens (core's `CatalogDraftRunner` shape). Every token must return exactly once
+and the line count must be unchanged; a block failing either is **kept in the source language and counted**.
+The draft reaches a new editor through module state, cleared on read — a doc-store handoff would mean
+storing machine output, which is the one thing this refuses to do.
 
 ## Page syntax (what the backend extracts and the reader renders)
 ```
@@ -174,3 +208,5 @@ This repo is meant to be built with the shared **writing-a-mosaicast-plugin** sk
 
 ## When unsure
 Ask, or note the assumption visibly, instead of silently diverging from ARCHITECTURE.md.
+
+[core#89]: https://github.com/Mosaicast/mosaicast-core/issues/89
