@@ -145,10 +145,25 @@ describe('<WikiPage> — reader', () => {
 
     const article = host.querySelector('article');
     expect(article?.getAttribute('lang')).toBe('en');
-    const switcher = host.querySelector('.wiki__langs');
-    expect(switcher?.textContent).toContain('Deutsch');
-    expect(switcher?.querySelector('a')?.getAttribute('hreflang')).toBe('de');
-    expect(switcher?.querySelector('.wiki__lang--current')?.textContent).toBe('English');
+
+    // A menu, not a row: the closed control names the language you are reading, and the list is behind it.
+    const menu = host.querySelector('.wiki__langmenu');
+    expect(menu?.querySelector('summary')?.textContent).toContain('English');
+    expect(menu?.querySelector('.wiki__langlist')?.textContent).toContain('Deutsch');
+    expect(menu?.querySelector('a')?.getAttribute('hreflang')).toBe('de');
+    expect(menu?.querySelector('.wiki__lang--current')?.textContent).toBe('English');
+  });
+
+  it('gives the icon-only page controls a name only a screen reader reads', async () => {
+    // `Icon` is aria-hidden by contract, so an icon-only control announced as nothing is a control nobody
+    // can use. The label leaves the page, not the accessibility tree.
+    const ctx = ctxFor('the-kraken', { page: [{ ...KRAKEN, locale: 'en' }] });
+
+    await render(ctx);
+
+    const buttons = [...host.querySelectorAll('.wiki__iconbtn')];
+    expect(buttons.map((b) => b.querySelector('.wiki__vh')?.textContent)).toContain('History');
+    expect(buttons.every((b) => b.getAttribute('title'))).toBe(true);
   });
 
   it('never lists a translation that is not published, since the index cannot hold one', async () => {
@@ -156,7 +171,7 @@ describe('<WikiPage> — reader', () => {
 
     await render(ctx);
 
-    expect(host.querySelector('.wiki__langs')).toBeNull();
+    expect(host.querySelector('.wiki__langmenu')).toBeNull();
   });
 
   it('states that a page does not exist rather than rendering a blank tile', async () => {

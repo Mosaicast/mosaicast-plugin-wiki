@@ -79,6 +79,7 @@
         "searchText": "text:fulltext",
         "tags": "string:indexed",
         "status": "string:indexed",
+        "sourcesHeading": "string",
         "locale": "string:indexed",
         "translationOf": "string:indexed",
         "createdAt": "timestamp",
@@ -163,6 +164,11 @@
     "revisionsKept": {
       "type": "number",
       "default": 50,
+      "editableBy": "podcaster"
+    },
+    "sourceHeadings": {
+      "type": "string",
+      "default": "sources,quellen",
       "editableBy": "podcaster"
     },
     "blobGraceMinutes": {

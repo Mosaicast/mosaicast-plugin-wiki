@@ -121,6 +121,24 @@ class WikiLanguageTest {
     }
 
     @Test
+    void appliesAnOriginalBeforeTheTranslationThatNamesIt() {
+        // Both saved between two ticks. The doc store hands drafts back in whatever order it likes, so
+        // without sorting the translation is applied first half the time -- against a wiki that has not got
+        // the original yet, which rejects it and deletes the writing.
+        var schema = schema();
+        var ctx = bilingual(schema);
+        draft(ctx, "der-krake", Map.of("title", "Der Krake", "markdown", "Ein Tintenfisch.",
+                "locale", "de", "translationOf", "the-kraken"));
+        draft(ctx, "the-kraken", Map.of("title", "The Kraken", "markdown", "A squid.", "locale", "en"));
+
+        new WikiPlugin().register(ctx);
+
+        assertEquals("ok", receipt(ctx, "the-kraken").state());
+        assertEquals("ok", receipt(ctx, "der-krake").state());
+        assertEquals("the-kraken", page(schema, "der-krake").translationOf());
+    }
+
+    @Test
     void refusesAPageThatTranslatesItself() {
         var schema = schema();
         var ctx = bilingual(schema);

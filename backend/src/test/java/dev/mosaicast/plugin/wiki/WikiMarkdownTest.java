@@ -78,13 +78,59 @@ class WikiMarkdownTest {
                 - [not a source](https://example.com/after)
                 """;
 
-        List<WikiMarkdown.Source> sources = WikiMarkdown.sources(body);
+        var parsed = WikiMarkdown.sources(body, WikiMarkdown.DEFAULT_SOURCE_HEADINGS);
 
-        assertEquals(2, sources.size(), "the section ends at the next heading");
-        assertEquals("Kraken (Wikipedia)", sources.get(0).label());
-        assertEquals("accessed 2026-08", sources.get(0).note());
-        assertNull(sources.get(1).note());
-        assertEquals(2, WikiMarkdown.sources(body.replace("## Sources", "## Quellen")).size());
+        assertEquals(2, parsed.items().size(), "the section ends at the next heading");
+        assertEquals("Sources", parsed.heading(), "recorded as written, so the reader can strip this one");
+        assertEquals("Kraken (Wikipedia)", parsed.items().get(0).label());
+        assertEquals("accessed 2026-08", parsed.items().get(0).note());
+        assertNull(parsed.items().get(1).note());
+
+        var german = WikiMarkdown.sources(body.replace("## Sources", "## Quellen"),
+                WikiMarkdown.DEFAULT_SOURCE_HEADINGS);
+        assertEquals(2, german.items().size());
+        assertEquals("Quellen", german.heading());
+    }
+
+    @Test
+    void readsASourcesSectionInALanguageOnlyTheOperatorKnows() {
+        // The point of a config field over a per-language table: a table only helps the languages somebody
+        // thought to add, which is the same failure one step later.
+        String body = """
+                Del prose.
+
+                ## Fuentes
+                - [Un libro](https://example.com/libro)
+                """;
+
+        assertNull(WikiMarkdown.sources(body, WikiMarkdown.DEFAULT_SOURCE_HEADINGS),
+                "not a heading this site recognises yet");
+
+        var parsed = WikiMarkdown.sources(body, List.of("sources", "quellen", "fuentes"));
+
+        assertEquals(1, parsed.items().size());
+        assertEquals("Fuentes", parsed.heading());
+    }
+
+    @Test
+    void treatsAConfiguredHeadingAsTextRatherThanAPattern() {
+        // The list comes from a config field a podcaster edits. A heading containing regex punctuation has
+        // to match itself, not blow up the section parser or match everything.
+        String body = """
+                ## Sources (cited)
+                - [A book](https://example.com/book)
+                """;
+
+        var parsed = WikiMarkdown.sources(body, List.of("sources (cited)"));
+
+        assertEquals(1, parsed.items().size());
+        assertEquals("Sources (cited)", parsed.heading());
+    }
+
+    @Test
+    void hasNoSourcesSectionWhenTheBodyNeverOpensOne() {
+        assertNull(WikiMarkdown.sources("Just prose.", WikiMarkdown.DEFAULT_SOURCE_HEADINGS));
+        assertNull(WikiMarkdown.sources(null, WikiMarkdown.DEFAULT_SOURCE_HEADINGS));
     }
 
     @Test

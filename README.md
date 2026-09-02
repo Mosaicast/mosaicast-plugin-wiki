@@ -45,8 +45,9 @@ come back exactly once and the line count must be unchanged — a block failing 
 the source language and counted**, because a paragraph still in English is obvious to a reader and a
 silently broken image link is not.
 
-One known limit: the `Sources` heading is recognised in English (`Sources`) and German (`Quellen`) only,
-so a translation into a third language loses source extraction until that table grows.
+The `Sources` heading a page uses is a setting (`sourceHeadings`, default `sources,quellen`), so a wiki
+written in a language the shell has never shipped can still have its sources extracted — add the word and
+re-save the page.
 
 ## Build & test
 ```bash

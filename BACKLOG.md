@@ -6,47 +6,15 @@ SPDX-FileCopyrightText: 2026 The Mosaicast Authors
 # Backlog
 
 What is known to be open, in one place. `docs/BRIEF.md`'s Definition of Done is **met** — this is everything
-past it: reviewer feedback, work deliberately deferred, and release hygiene.
+past it: reviewer feedback, work deliberately deferred, and release hygiene. What has been done since is
+kept at the bottom rather than deleted, so the numbers in it stay meaningful.
 
 Ordered by recommended sequence, not by size. Each item names the files it lands in, because most of them
 touch both halves of the plugin and the page-syntax ones touch four files that must agree.
 
 ---
 
-## 1. Feedback from 2026-09-02
-
-### 1.1 Language switcher as a dropdown — *small*
-> "the language icon as a drop down button and then all available languages as a dropdown. But obviously
-> only if there are 2 or more languages."
-
-Today `PageView.tsx` renders `.wiki__langs` as an icon followed by every language inline. With two languages
-that is fine; with six it is a wall of text above the title.
-
-- `frontend/src/components/PageView.tsx`, `styles.ts`.
-- `<details>`/`<summary>` keeps it working with no click-outside handler and no focus management, which
-  inside a shadow root is worth a lot. A custom button needs `aria-expanded`, Escape, click-outside and a
-  focus return — all doable, all more code.
-- The "2 or more" condition already exists: `variantsOf()` returns `[]` below two members, so the nav is not
-  rendered at all. Keep that gate where it is.
-- **Do not** change where the list comes from. It is built from the `index` projection, which holds
-  published pages only, and that is what makes a draft translation unlistable *by construction* rather than
-  by a filter someone could forget.
-
-### 1.2 History and Edit as icon buttons on the title line — *small*
-> "Könnte man das Revisions und Bearbeiten als Icon-Buttons auf Höhe des Titels rechtsbündig machen?"
-
-Today `.wiki__pageactions` is a text row *below* the meta line. Wanted: right-aligned icon buttons level
-with the `<h1>`.
-
-- `frontend/src/components/PageView.tsx`, `styles.ts`.
-- Icon-only means the label has to move to an accessible name — `aria-label` plus `title`, not a bare
-  `<Icon>`. An icon is not a word (CLAUDE.md); the i18n keys `page.history` / `page.edit` already exist and
-  become the labels.
-- Layout: the title row becomes `display: flex; justify-content: space-between`. At 375 px the title wraps,
-  so decide whether the buttons stay pinned to the first line or drop beneath — check both, the container
-  query in `styles.ts` is where it goes.
-- Interacts with 1.1: the language dropdown currently sits *above* the title. If both end up on the title
-  row, do them together rather than twice.
+## 1. Feedback from 2026-09-02 — open
 
 ### 1.3 Image width control — *medium, and not the change that was asked for*
 > "switch the wiki pages to rst or something like that? Markdown works perfectly except for if you add
@@ -132,12 +100,6 @@ Both are buildable today and the SDK explicitly points at the primitive for the 
 
 ## 2. Carried over from earlier work
 
-### 2.1 The Sources heading is recognised in English and German only — *small*
-`WikiMarkdown.java` and `markdown.ts` both match `## Sources` / `## Quellen`. A page translated into a third
-language loses source extraction silently — the section stays in the body as prose and the structured rows
-are simply absent. Stated in the translate panel today rather than fixed. Options: a config field listing
-the headings, or a per-locale table keyed off `page.locale`.
-
 ### 2.2 Wiki-link labels are not translated — *small, needs a decision first*
 `translate.ts` masks `[[slug|label]]` whole, so a German page keeps English link labels. Masking only the
 target would translate the label — but a translated label is only an improvement if the *target* still
@@ -180,3 +142,20 @@ Two stale claims in the `writing-a-mosaicast-plugin` skill (`mosaicast-skills`),
 - It describes `mosaicast-plugin-sample` as **v2.10.0 on SDK 0.8.0**. The installed sample is **v2.14.0 on
   platformApi 0.12.0**, so it is a usable reference for `tags` / `feeds` / `docs` / `external` / `nav`
   again.
+
+---
+
+## 5. Done
+
+- **1.1 Language switcher as a dropdown.** The icon is a `<details>` button naming the language you are
+  reading; the others are behind it. Below two languages nothing renders at all, as before.
+- **1.2 History and Edit as icon buttons on the title line.** Right-aligned, level with the heading, each
+  carrying a visually-hidden label because `Icon` is `aria-hidden` by contract. Below 30 rem the controls
+  drop under the title rather than squeezing it.
+- **2.1 The Sources vocabulary is a setting.** `sourceHeadings` (default `sources,quellen`) is what the
+  backend matches, and it records the heading it found in `page.sourcesHeading` so the reader strips
+  exactly that section without holding a second copy of the list. Verified live with a Spanish page under
+  `## Fuentes`.
+- **A draft ordering race, found while seeding those three pages.** A translation saved in the same tick as
+  its original was rejected — "there is no page 'the-kraken' to translate" — and its draft deleted, purely
+  because the doc store returned it first. Originals are now ingested before translations.

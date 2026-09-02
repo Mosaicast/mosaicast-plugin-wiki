@@ -173,8 +173,14 @@ storing machine output, which is the one thing this refuses to do.
 [[the-kraken]]  [[the-kraken|label]]        wiki link; unresolved -> red link
 [[episode:s01e02]]  [[episode:s01e02@12:04|label]]   episode link via ctx.links.episode(slug,{t})
 ![caption](blob:<ref>)                      an uploaded file, addressed by ref
-## Sources  /  ## Quellen                   extracted to `source` rows and rendered from those
+## Sources / ## Quellen / ...               extracted to `source` rows and rendered from those
 ```
+The Sources vocabulary is the **`sourceHeadings` config field** (default `sources,quellen`), not a hardcoded
+pair — a per-language table only helps languages somebody thought to add. The backend records the heading it
+matched in `page.sourcesHeading`, and the reader strips *that* section, so the browser holds no copy of the
+list to fall out of step. Configured headings are `Pattern.quote`d / escaped on both sides: the value comes
+from a form a podcaster types into.
+
 `WikiMarkdown` (backend) finds these with **regexes, not a parser** — a real parser would mean a shaded
 JAR and PF4J classloading. The browser parses properly for rendering; anything the backend misses degrades
 to a missing backlink, never a broken page. The reader strips the body's own Sources section, since the

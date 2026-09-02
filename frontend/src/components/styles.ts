@@ -143,17 +143,58 @@ export const WIKI_CSS = ICON_CSS + `
   .wiki__note { color: var(--mc-text-muted); }
   a.wiki__tag:hover { color: var(--mc-text); border-color: var(--mc-accent); text-decoration: none; }
 
-  .wiki__pageactions { display: flex; gap: 1rem; margin: 0 0 1rem; font-size: .875rem; }
 
-  /* The language switcher: the other languages this page exists in, above the title where a reader who
-     cannot read this one looks first. Muted until hovered -- it is navigation, not part of the article. */
-  .wiki__langs {
-    display: flex; flex-wrap: wrap; align-items: center; gap: .5rem;
-    margin: 0 0 .5rem; font-size: .8125rem;
+  /* The title and the controls that act on this page, on one line. Right-aligned so the heading keeps the
+     left edge every other block on the page shares. */
+  .wiki__titlerow {
+    display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between;
+    gap: .5rem 1rem; margin-bottom: .25rem;
   }
-  .wiki__langs .wiki-icon { opacity: .7; }
-  .wiki__lang { color: var(--mc-text-muted); }
-  a.wiki__lang:hover { color: var(--mc-text); }
+  .wiki__titlerow .wiki__title { margin: 0; flex: 1 1 12rem; }
+  .wiki__pagetools { display: flex; align-items: center; gap: .25rem; flex: 0 0 auto; }
+
+  /* Icon-only, so it needs a hit area a finger can reach and a label only a screen reader reads. */
+  .wiki__iconbtn {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 2rem; height: 2rem;
+    color: var(--mc-text-muted); border: 1px solid transparent; border-radius: .375rem;
+  }
+  .wiki__iconbtn:hover { color: var(--mc-text); border-color: var(--mc-border); text-decoration: none; }
+  .wiki__iconbtn:focus-visible { outline: 2px solid var(--mc-accent); outline-offset: 1px; }
+  .wiki__vh {
+    position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0;
+    overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0;
+  }
+
+  /* The language menu. The details element gives the open state, Escape and keyboard operation for free;
+     all this has to add is the popover's position and taking the disclosure marker off. */
+  .wiki__langmenu { position: relative; }
+  .wiki__langmenu > summary {
+    display: inline-flex; align-items: center; gap: .3rem;
+    height: 2rem; padding: 0 .5rem;
+    color: var(--mc-text-muted); border: 1px solid transparent; border-radius: .375rem;
+    font-size: .8125rem; cursor: pointer; list-style: none;
+  }
+  .wiki__langmenu > summary::-webkit-details-marker { display: none; }
+  .wiki__langmenu > summary:hover,
+  .wiki__langmenu[open] > summary { color: var(--mc-text); border-color: var(--mc-border); }
+  .wiki__langmenu > summary:focus-visible { outline: 2px solid var(--mc-accent); outline-offset: 1px; }
+  .wiki__caret {
+    width: 0; height: 0; margin-left: .1rem;
+    border-left: .25rem solid transparent; border-right: .25rem solid transparent;
+    border-top: .3rem solid currentColor;
+  }
+  .wiki__langmenu[open] .wiki__caret { transform: rotate(180deg); }
+  .wiki__langlist {
+    position: absolute; top: calc(100% + .25rem); right: 0; z-index: 2;
+    min-width: 10rem; margin: 0; padding: .25rem; list-style: none;
+    background: var(--mc-surface); border: 1px solid var(--mc-border); border-radius: .5rem;
+  }
+  .wiki__langlist .wiki__lang {
+    display: block; padding: .3rem .5rem; border-radius: .25rem;
+    color: var(--mc-text-muted); font-size: .875rem; white-space: nowrap;
+  }
+  .wiki__langlist a.wiki__lang:hover { color: var(--mc-text); background: var(--mc-bg); text-decoration: none; }
   .wiki__lang--current { color: var(--mc-text); font-weight: 600; }
   /* A page's language, shown on a list row only where the site has more than one to tell apart. */
   .wiki__langchip {
@@ -293,6 +334,13 @@ export const WIKI_CSS = ICON_CSS + `
     .wiki__search { flex: 0 0 auto; }
     /* Side-by-side editing needs width the phone has not got; the preview follows the body instead. */
     .wiki__editor, .wiki__row { grid-template-columns: 1fr; }
+    /* The controls drop below the heading rather than squeezing it: at this width a wrapped title beside
+       three 2rem controls leaves the title about four characters wide. */
+    .wiki__titlerow { flex-direction: column; align-items: stretch; }
+    /* The same trap the search bar carries a note about: this is now a COLUMN flex container, so the row
+       layout's flex-basis of 12rem sizes the heading's HEIGHT and leaves 12rem of nothing below. */
+    .wiki__titlerow .wiki__title { flex: 0 0 auto; }
+    .wiki__pagetools { justify-content: flex-end; }
     .wiki__area, .wiki__preview { min-height: 12rem; }
   }
 `;

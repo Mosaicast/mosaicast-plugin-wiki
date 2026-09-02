@@ -20,6 +20,12 @@ export interface PageRow {
   markdown: string | null;
   tags: string | null;
   status: string;
+  /**
+   * The heading that opened this page's Sources section, exactly as the author wrote it, or `null` when it
+   * has none. The reader strips that section because the structured rows replace it — being told which
+   * heading matched is what lets it do so without carrying the site's heading vocabulary as well.
+   */
+  sourcesHeading: string | null;
   /** The language the body is written in, or `null` when the author stated none (read the site default). */
   locale: string | null;
   /** The slug of the page this one translates, or `null` when it is an original. Always a root: no chains. */

@@ -26,6 +26,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -110,6 +111,9 @@ public class WikiPlugin implements PluginBackend, ShareMetadataProvider, Sitemap
     /** The page the wiki's front page reads from, unless an operator points it elsewhere. */
     private static final String DEFAULT_HOME_SLUG = "main-page";
 
+    /** The shipped Sources vocabulary, as the config field's default spells it. */
+    private static final String DEFAULT_SOURCE_HEADINGS = "sources,quellen";
+
     /** The namespace this plugin tags under. Opaque to the host, and nobody else can name it. */
     private static final String TAG_SUBJECT_PREFIX = "page:";
 
@@ -159,24 +163,42 @@ public class WikiPlugin implements PluginBackend, ShareMetadataProvider, Sitemap
 
     // --- the write path -------------------------------------------------------------------------------
 
+    /**
+     * Applies every pending draft, originals before translations.
+     *
+     * <p><strong>The order is not cosmetic.</strong> A translation names the page it translates, and a
+     * draft naming a page that does not exist is rejected — with the draft deleted, because a rejection is
+     * the author's to fix rather than something to retry forever. Save an original and its translation
+     * between two ticks and the doc store hands them back in whatever order it likes: half the time the
+     * translation is applied first, against a wiki that has not got the original yet, and a podcaster loses
+     * writing to an accident of iteration order. Sorting costs one pass and removes the race entirely.
+     *
+     * <p>One pass is enough because the graph is a star: a translation only ever points at an original, so
+     * there is no chain to resolve in dependency order.
+     */
     private void ingestDrafts() {
         SchemaStore schema = ctx.schema();
         if (schema == null) {
             return;
         }
+        record Pending(String key, String slug, Draft draft) {}
+        List<Pending> pending = new ArrayList<>();
         for (DocEntry entry : ctx.store().query(Scope.site(), DRAFT_PREFIX)) {
-            String slug = entry.key().substring(DRAFT_PREFIX.length());
             Draft draft = ctx.store().get(Scope.site(), entry.key(), Draft.class).orElse(null);
-            if (draft == null) {
-                continue;
+            if (draft != null) {
+                pending.add(new Pending(entry.key(), entry.key().substring(DRAFT_PREFIX.length()), draft));
             }
+        }
+        pending.sort(Comparator.comparingInt(p -> blankToNull(p.draft().translationOf()) == null ? 0 : 1));
+
+        for (Pending item : pending) {
             try {
-                ingestOne(schema, slug, draft, entry.key());
+                ingestOne(schema, item.slug(), item.draft(), item.key());
             } catch (RuntimeException e) {
                 // Report the failure to the editor rather than retrying it silently forever.
-                ctx.logger().warn("wiki: draft '{}' could not be ingested", slug, e);
-                receipt(slug, "failed", e.getMessage(), null);
-                ctx.store().delete(Scope.site(), entry.key());
+                ctx.logger().warn("wiki: draft '{}' could not be ingested", item.slug(), e);
+                receipt(item.slug(), "failed", e.getMessage(), null);
+                ctx.store().delete(Scope.site(), item.key());
             }
         }
     }
@@ -224,6 +246,9 @@ public class WikiPlugin implements PluginBackend, ShareMetadataProvider, Sitemap
         String status = STATUS_PUBLISHED.equals(draft.status()) || draft.status() == null
                 ? STATUS_PUBLISHED
                 : draft.status();
+        // Parsed once here rather than again inside replaceDerivedRows: the heading it matched belongs on
+        // the page row, so the reader can strip exactly this section without carrying the vocabulary too.
+        WikiMarkdown.Sources parsedSources = WikiMarkdown.sources(markdown, sourceHeadings());
         Instant now = Instant.now();
 
         Map<String, Object> values = new HashMap<>();
@@ -237,6 +262,7 @@ public class WikiPlugin implements PluginBackend, ShareMetadataProvider, Sitemap
         values.put("status", status);
         values.put("locale", locale);
         values.put("translationOf", translationOf);
+        values.put("sourcesHeading", parsedSources == null ? null : parsedSources.heading());
         values.put("updatedAt", now);
         values.put("updatedBy", blankToNull(draft.author()));
         values.put("revisionNo", nextRevision);
@@ -258,7 +284,7 @@ public class WikiPlugin implements PluginBackend, ShareMetadataProvider, Sitemap
                 "author", draft.author() == null ? "" : draft.author(),
                 "createdAt", now));
 
-        replaceDerivedRows(schema, slug, markdown);
+        replaceDerivedRows(schema, slug, markdown, parsedSources);
         publishTags(slug, draft.tags());
 
         receipt(slug, "ok", null, nextRevision);
@@ -385,6 +411,28 @@ public class WikiPlugin implements PluginBackend, ShareMetadataProvider, Sitemap
     }
 
     /**
+     * The headings this site opens a Sources section with.
+     *
+     * <p>A config field rather than a table keyed off {@code page.locale}, because a per-language table
+     * only helps the languages somebody thought to add — which is the same failure one step later. A
+     * comma-separated list an operator edits covers a wiki written in a language nobody anticipated, and
+     * it is the only place the vocabulary lives now that the reader is told which heading matched.
+     *
+     * @return the configured headings, lower-cased and blank-free; the shipped pair when unset
+     */
+    private List<String> sourceHeadings() {
+        String configured = ctx.config().get("sourceHeadings", String.class, DEFAULT_SOURCE_HEADINGS);
+        List<String> headings = new ArrayList<>();
+        for (String heading : (configured == null ? DEFAULT_SOURCE_HEADINGS : configured).split(",")) {
+            String trimmed = heading.strip().toLowerCase(Locale.ROOT);
+            if (!trimmed.isEmpty() && !headings.contains(trimmed)) {
+                headings.add(trimmed);
+            }
+        }
+        return headings;
+    }
+
+    /**
      * Puts this page's tags into the site's shared vocabulary (ARCHITECTURE §6.1.1).
      *
      * <p>Before 0.9 the wiki had a private tag column and nothing else on the site could see it, so a page
@@ -434,7 +482,8 @@ public class WikiPlugin implements PluginBackend, ShareMetadataProvider, Sitemap
      * projection of the markdown -- so reconciling them individually would be more code for the same
      * result, and the counts here are per page, not per wiki.
      */
-    private void replaceDerivedRows(SchemaStore schema, String slug, String markdown) {
+    private void replaceDerivedRows(SchemaStore schema, String slug, String markdown,
+                                    WikiMarkdown.Sources parsedSources) {
         schema.delete("link", Criteria.where("fromSlug", Op.EQ, slug));
         schema.delete("media", Criteria.where("pageSlug", Op.EQ, slug));
         schema.delete("source", Criteria.where("pageSlug", Op.EQ, slug));
@@ -459,7 +508,7 @@ public class WikiPlugin implements PluginBackend, ShareMetadataProvider, Sitemap
             schema.insert("media", row);
         }
         position = 0;
-        for (WikiMarkdown.Source source : WikiMarkdown.sources(markdown)) {
+        for (WikiMarkdown.Source source : parsedSources == null ? List.<WikiMarkdown.Source>of() : parsedSources.items()) {
             Map<String, Object> row = new HashMap<>();
             row.put("pageSlug", slug);
             row.put("label", source.label());
@@ -973,8 +1022,8 @@ public class WikiPlugin implements PluginBackend, ShareMetadataProvider, Sitemap
 
     /** A row of the {@code page} entity; component names match the manifest's field names. */
     record PageRow(long id, String slug, String title, String summary, String markdown, String searchText,
-                   String tags, String status, String locale, String translationOf, Instant createdAt,
-                   Instant updatedAt, String updatedBy, Long revisionNo) {}
+                   String tags, String status, String sourcesHeading, String locale, String translationOf,
+                   Instant createdAt, Instant updatedAt, String updatedBy, Long revisionNo) {}
 
     /** Only the parts of a {@code link} row the backend reasons about. */
     record WikiLinkRow(long id, String fromSlug, String toSlug, String kind, String label) {}
