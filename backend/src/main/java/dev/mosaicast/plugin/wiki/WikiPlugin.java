@@ -25,6 +25,7 @@ import dev.mosaicast.plugin.api.UserDataHandler;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -32,6 +33,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.HashSet;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -670,21 +672,94 @@ public class WikiPlugin implements PluginBackend, ShareMetadataProvider, Sitemap
         String description = blankToNull(page.summary()) == null
                 ? WikiMarkdown.excerpt(page.markdown(), SUMMARY_CHARS)
                 : page.summary();
-        return Optional.of(new OgMeta(page.title(), description, firstImage(schema, slug)));
+        // `og:locale` is the language of *this* page, not of the install (§6.4, contract 0.12.0). A German
+        // article stays German for an English visitor, so announcing it in the request's locale would be
+        // the install-wide bug one level down. Null when the author stated no language: "whatever the host
+        // resolved" is the honest answer for a page that never claimed one.
+        return Optional.of(new OgMeta(page.title(), description, firstImage(schema, slug), page.locale()));
     }
 
+    /**
+     * Every published page, each carrying the other languages it exists in.
+     *
+     * <p><strong>The map of paths is what this plugin needed and a list of locale codes could not give
+     * it.</strong> A wiki translation lives at its own slug — {@code /p/wiki/the-kraken} and
+     * {@code /p/wiki/der-krake} are one article in two languages — so "this page also exists in German",
+     * with the host appending {@code ?lang=de} to a single path, would have described a wiki nobody has.
+     * Every member of a group therefore declares the <em>same</em> map, which is also what stops two
+     * entries handing a crawler two answers to one question.
+     *
+     * <p><strong>An alternate is a claim about content, so three things have to be true before one is
+     * made:</strong> the page states a language (an unstated one means "the site default", which is a guess
+     * and not a claim), the group has more than one member (a group of one is an hreflang set that says
+     * nothing), and every member is <em>published</em> — the same per-row rule the reader and
+     * {@code SearchProvider} follow, in a fourth place, because an unpublished translation announced to a
+     * crawler is a promise of a page it will be served a 404 for.
+     *
+     * @return the entries, each with its translation group where there is one
+     */
     @Override
     public List<SitemapUrl> urls() {
         SchemaStore schema = ctx == null ? null : ctx.schema();
         if (schema == null) {
             return List.of();
         }
+        List<PageRow> published = schema.select("page",
+                Criteria.where("status", Op.EQ, STATUS_PUBLISHED), PageRow.class);
+
+        // slug -> its group's alternates, built once per group so every member declares the same map.
+        Map<String, Map<String, String>> groups = translationGroups(published);
+
         List<SitemapUrl> urls = new ArrayList<>();
-        for (PageRow page : schema.select("page",
-                Criteria.where("status", Op.EQ, STATUS_PUBLISHED), PageRow.class)) {
-            urls.add(new SitemapUrl("/p/wiki/" + page.slug(), page.updatedAt()));
+        for (PageRow page : published) {
+            urls.add(new SitemapUrl("/p/wiki/" + page.slug(), page.updatedAt(),
+                    groups.getOrDefault(page.slug(), Map.of())));
         }
         return urls;
+    }
+
+    /**
+     * Builds one alternates map per translation group and hands it to every member.
+     *
+     * @param published every published page
+     * @return slug -> the group's locale-to-path map, absent for a page with no group worth declaring
+     */
+    private static Map<String, Map<String, String>> translationGroups(List<PageRow> published) {
+        Map<String, Map<String, String>> byRoot = new LinkedHashMap<>();
+        Map<String, List<String>> membersByRoot = new LinkedHashMap<>();
+
+        for (PageRow page : published) {
+            String root = blankToNull(page.translationOf()) == null ? page.slug() : page.translationOf();
+            String locale = blankToNull(page.locale());
+            membersByRoot.computeIfAbsent(root, key -> new ArrayList<>()).add(page.slug());
+            if (locale == null) {
+                continue;   // no stated language, so nothing honest to say about this member
+            }
+            // Sorted by locale code: the same rows must produce the same sitemap, and insertion order here
+            // is whatever order the query happened to return.
+            Map<String, String> alternates = byRoot.computeIfAbsent(root, key -> new TreeMap<>());
+            // The ingest tick refuses two pages in one language per group, so a collision here would mean
+            // rows written before that rule existed. Keep the first and say nothing about the second
+            // rather than throw: SitemapUrl rejects a duplicate locale, and a throw here costs the whole
+            // site's plugin sitemap over one bad row.
+            alternates.putIfAbsent(locale, "/p/wiki/" + page.slug());
+        }
+
+        Map<String, Map<String, String>> bySlug = new LinkedHashMap<>();
+        byRoot.forEach((root, alternates) -> {
+            if (alternates.size() < 2) {
+                return;   // a group of one is an hreflang set that says nothing
+            }
+            Map<String, String> shared = Collections.unmodifiableMap(new LinkedHashMap<>(alternates));
+            for (String member : membersByRoot.getOrDefault(root, List.of())) {
+                // Only a member the map actually names: SitemapUrl requires an entry pointing at `loc`,
+                // and a page whose language is unstated has none.
+                if (shared.containsValue("/p/wiki/" + member)) {
+                    bySlug.put(member, shared);
+                }
+            }
+        });
+        return bySlug;
     }
 
     /**

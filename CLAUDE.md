@@ -11,7 +11,7 @@ Read both fully before writing code. Work in plan mode first.
 ### `docs/BRIEF.md` is stale — known corrections
 It predates SDK 0.4.0 and is a read-only spec, so the corrections live here instead of in it. Where it
 disagrees with the SDK working tree or `mosaicast-plugin-sample`, the latter win.
-- `platformApi` is **`0.11.0`** (exact `major.minor` match; the docs' `"1.x"` does not even parse). Pin the
+- `platformApi` is **`0.12.0`** (exact `major.minor` match; the docs' `"1.x"` does not even parse). Pin the
   same string in all four places — `plugin.json`, both gradle coordinates, `package.json`. Nothing is a
   literal: `manifest.test.ts` compares the manifest and the npm pin against the SDK's own
   `PLATFORM_API_VERSION`, and `ci.yml` compares the manifest against both gradle coordinates.
@@ -24,17 +24,16 @@ disagrees with the SDK working tree or `mosaicast-plugin-sample`, the latter win
 - It predates languages: §30's "page content is author data" holds; `page.locale` only makes it readable.
 
 ### Platform surfaces this plugin depends on
-Both gaps this repo filed are **closed** — [core#81](https://github.com/Mosaicast/mosaicast-core/issues/81)
-(file storage) and [core#82](https://github.com/Mosaicast/mosaicast-core/issues/82) (timestamped episode
-links) shipped in SDK 0.8.0 / core 0.6.11+.
+Every gap this repo filed is **closed**: file storage and timestamped episode links (core#81/#82, SDK 0.8.0),
+real 404s for unknown subpaths ([core#89], core 0.6.22), and per-page language on both SEO surfaces
+(SDK 0.12.0 / core 0.6.24).
 - **`ctx.blobs`** (manifest `blobs` block; `null` without one). **Store the `ref`, never the URL** —
   `urlFor(ref)` is derived at render time. **Nothing collects orphans**: the ingest tick deletes what the
   wiki stops pointing at. `quota()` is the only honest source for the effective limits (an admin grant
   *replaces* the manifest's ask). **SVG is never storable.** Uploads are same-origin under `/api/`, so they
   need no CSP host and make no consent decision — prefer them to external URLs.
-- **`ctx.links.episode(slug, { t })`** for citing a moment; `ctx.links.feed(slug, …)`. Never hardcode
-  `/episodes/…` or `/feeds/…`.
-- Core 0.6.12 ships its **own share dialog** on episodes, feeds and the site panel — do not build a second.
+- **`ctx.links.episode(slug, { t })` / `.feed(slug, …)`** — never hardcode `/episodes/…` or `/feeds/…`.
+  Core ships its **own share dialog** since 0.6.12 — do not build a second.
 - **`--mc-icon-*` icons** (§12.3): `iconCss(ICON_NAMES, { className })` builds the stylesheet since SDK 0.9.
   **The class name must be kebab-case or `iconCss` throws** — at runtime inside a render, which the error
   boundary turns into a blanked tile; `tsc` does not catch it. An icon is not a word: never in a string.
@@ -47,13 +46,12 @@ links) shipped in SDK 0.8.0 / core 0.6.11+.
   `MOSAICAST_PLUGINS=Mosaicast/mosaicast-plugin-wiki@v<x>#sha256:<digest>`. The asset name is load-bearing;
   the workflow refuses a tag disagreeing with the manifest `version`.
 - **The `?t=` grammar is shared** (§6.4). `WikiMarkdown.seconds` and `markdown.ts#parseTimestamp` are the
-  *third and fourth* implementations of core's `util/timestamp.ts` / `web/TimestampParam.java`, held to
-  the same case table: `754`, `12:04`, `1:02:03`, `1h02m03s`, `90m`; bounded fields, 24 h cap, unreadable
-  values dropped. A link that previews as one moment and plays another is worse than one with no
-  timestamp — so change all four together or none.
-- **No request-time backend hook** (v1 contract, ARCHITECTURE §7.6) — hence the draft/ingest write path.
-- **Unknown subpaths are a real 404** since core 0.6.22 ([core#89], closed) — `hasRoute` answers, and
-  **the empty subpath is our own root**: a lookup over slugs alone 404s the landing page.
+  *third and fourth* implementations of core's `util/timestamp.ts` / `web/TimestampParam.java`, same case
+  table (`754`, `12:04`, `1:02:03`, `1h02m03s`, `90m`; bounded fields, 24 h cap, unreadable values dropped).
+  A link that previews as one moment and plays another is worse than one with none — change all four or none.
+- **No request-time backend hook** (v1 contract, §7.6) — hence the draft/ingest write path, and why every
+  invariant lives in `ingestOne`. **Unknown subpaths are a real 404**: `hasRoute` answers, and **the empty
+  subpath is our own root** — a lookup over slugs alone 404s the landing page.
 - **`ctx.locales()` / `ctx.locale.content()`** are the site's *content* languages — what an admin permits
   text to be **authored** in, which is a different list from `available()` (what the shell can render in).
   Every language control here comes from `content()`; `isContentLocale` validates on ingest, because the
@@ -62,9 +60,15 @@ links) shipped in SDK 0.8.0 / core 0.6.11+.
   or the operator's provider choice, which moves under a running plugin. **Read it at the point of use,
   never cache it.** `usedBy: podcaster` is the floor the host enforces on the browser call (403 below it);
   Java's `ctx.translation()` is gated on the declared kind alone.
-- **Two SEO surfaces cannot carry a page's language.** `SitemapUrl(loc, lastModified)` has no `hreflang`
-  and `OgMeta(title, description, imageUrl)` has no `og:locale`, so the translation group is invisible to
-  crawlers. Worth filing against core, in the shape of core#81/#82.
+- **Both SEO surfaces carry a page's language** (0.12.0). `OgMeta.locale` is the language of *this* page —
+  a German article stays German for an English scraper. `SitemapUrl.alternates` is a **map of locale →
+  path**, the shape a wiki needs: a translation lives at its own slug, so "also in German, same URL +
+  `?lang=`" would describe a wiki nobody has. The map **must** name `loc`'s own language, every member of a
+  group declares the **same** map, and values are paths — the host adds `?lang=`, owns `x-default`, confines
+  each to `/p/wiki/`. Pin it with `SitemapProviderHarness`: a bad group is dropped silently.
+- **`?lang=` is a *UI* locale and changes the shell, not the article.** Core validates it against the UI
+  list and never persists it. The wiki serves a language by **slug**, so switcher links stay bare paths —
+  matching `x-default` and the canonical, and leaving the visitor's site language alone.
 
 ## Tech stack
 Java 21 (Gradle, PF4J extension) · React + Vite (Web Component)
@@ -89,7 +93,7 @@ cd ../mosaicast-core && dev/instance.sh up --plugins --admin  # :8081, fleeting 
 dev/instance.sh status | logs [-f] | psql | down
 ```
 `dev/screenshots.sh` is gone; `dev/instance.sh` replaced it and needs `--plugins` (the default loads none).
-Its `status` subcommand is advertised in the usage line and **not implemented** — it exits 127.
+(`status`/`logs`/`psql` were missing and landed in core 0.6.24; they work now.)
 5. **An env var you export does not reach the app.** `up` starts `bootRun`, whose JVM is forked from the
    long-lived Gradle daemon and inherits *its* environment, not your shell's. To set a property, either
    pass it in `--args="… --some.property=value"` (what `instance.sh` does) or `./gradlew --stop` first and
@@ -141,14 +145,13 @@ construction** rather than by a filter someone could forget. Prefer that shape w
 
 ## The front page is an ordinary wiki page
 `homePageSlug` (config, default `main-page`) names it; the backend publishes its body to the `home` doc key
-and the home view renders that above the generated sections. It gets the editor, revisions, history, search
-and backlinks for nothing. **Publish nothing as an absent key, never a null** — the doc store refuses a null
-value, so storing "no front page" that way throws on every tick of a new install.
+and the home view renders that above the generated sections — so it gets the editor, revisions, history,
+search and backlinks for nothing. **Publish nothing as an absent key, never a null** — the doc store refuses
+a null value, so storing "no front page" that way throws on every tick of a new install.
 
 ## The lead is only shown when it was written
 `page.summary` is auto-derived from the first paragraph when an author gives none, so rendering it above the
-body would print that paragraph twice. The reader compares it with the body's first paragraph and shows a
-lead only when they differ.
+body would print it twice. The reader shows a lead only when summary and first paragraph differ.
 
 ## Languages, and the translation graph
 `page.locale` is the language a page is **written** in (from `content()`, never `available()`); unstated

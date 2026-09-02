@@ -29,6 +29,11 @@ write and there is no request-time hook to check it at.
 
 On a site with one content language none of this is shown — no picker, no chip, no switcher.
 
+Crawlers are told the same thing: a page's share metadata names the language it is written in, and its
+`sitemap.xml` entry carries the whole translation group as `hreflang` alternates — so a German article is
+announced as German whoever scrapes it, and a search engine can offer the right language. A page is listed
+in a language only if it is really written in it, and an unpublished translation is never advertised.
+
 ### Machine translation
 Where the site admin has configured a translation provider, a podcaster can translate a page into a
 **draft**. It is shown, labelled, and saved by nobody: the author opens it as a new page or discards it.

@@ -4,6 +4,7 @@
 package dev.mosaicast.plugin.wiki;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -14,6 +15,7 @@ import dev.mosaicast.plugin.testkit.FakeFeedAccess;
 import dev.mosaicast.plugin.testkit.FakeLocales;
 import dev.mosaicast.plugin.testkit.FakePluginContext;
 import dev.mosaicast.plugin.testkit.FakeSchemaStore;
+import dev.mosaicast.plugin.testkit.SitemapProviderHarness;
 import dev.mosaicast.plugin.testkit.InMemoryDocStore;
 import dev.mosaicast.plugin.testkit.MapPluginConfig;
 import java.util.List;
@@ -227,6 +229,117 @@ class WikiLanguageTest {
 
         assertNull(page(schema, "the-kraken").translationOf(), "the original stays an original");
         assertEquals("rejected", receipt(ctx, "the-kraken").state());
+    }
+
+    // --- what the host asks for: og:locale, and the sitemap's translation group -----------------------
+
+    /** An English original with a German translation, both published. */
+    private static WikiPlugin bilingualWiki(FakeSchemaStore schema, FakePluginContext ctx) {
+        var plugin = new WikiPlugin();
+        draft(ctx, "the-kraken", Map.of("title", "The Kraken", "markdown", "A squid.", "locale", "en"));
+        plugin.register(ctx);
+        draft(ctx, "der-krake", Map.of("title", "Der Krake", "markdown", "Ein Tintenfisch.",
+                "locale", "de", "translationOf", "the-kraken"));
+        plugin.tick();
+        return plugin;
+    }
+
+    @Test
+    void tellsAScraperTheLanguageThePageIsWrittenIn() {
+        // og:locale is the language of *this* page, not of the install and not of the request: a German
+        // article stays German for an English visitor.
+        var schema = schema();
+        var ctx = bilingual(schema);
+        var plugin = bilingualWiki(schema, ctx);
+
+        assertEquals("de", plugin.metaFor("der-krake").orElseThrow().locale());
+        assertEquals("en", plugin.metaFor("the-kraken").orElseThrow().locale());
+    }
+
+    @Test
+    void saysNothingAboutTheLanguageOfAPageThatNeverClaimedOne() {
+        // Null means "whatever the host resolved for this request", which is the honest answer for a page
+        // whose author stated no language -- and the pre-0.12.0 behaviour.
+        var schema = schema();
+        var ctx = bilingual(schema);
+        draft(ctx, "the-kraken", Map.of("title", "The Kraken", "markdown", "A squid."));
+        var plugin = new WikiPlugin();
+        plugin.register(ctx);
+
+        assertNull(plugin.metaFor("the-kraken").orElseThrow().locale());
+    }
+
+    @Test
+    void putsBothLanguagesInOneSitemapTranslationGroup() {
+        // A wiki translation lives at its own slug, which is exactly the case a list of locale codes
+        // cannot express -- and both members must declare the same group, or a crawler gets two answers.
+        var schema = schema();
+        var ctx = bilingual(schema);
+        var plugin = bilingualWiki(schema, ctx);
+
+        var sitemap = new SitemapProviderHarness("wiki", plugin).collect();
+
+        assertEquals(List.of(), sitemap.problems());
+        assertEquals(List.of("de", "en"), sitemap.locales("/p/wiki/the-kraken"));
+        assertEquals(Map.of("en", "/p/wiki/the-kraken", "de", "/p/wiki/der-krake"),
+                sitemap.alternates("/p/wiki/der-krake"));
+        assertEquals(sitemap.alternates("/p/wiki/the-kraken"), sitemap.alternates("/p/wiki/der-krake"));
+    }
+
+    @Test
+    void declaresNoGroupForAPageThatStandsAlone() {
+        // An hreflang set of one says nothing, and empty alternates is what the host assumed anyway.
+        var schema = schema();
+        var ctx = bilingual(schema);
+        draft(ctx, "the-kraken", Map.of("title", "The Kraken", "markdown", "A squid.", "locale", "en"));
+        var plugin = new WikiPlugin();
+        plugin.register(ctx);
+
+        var sitemap = new SitemapProviderHarness("wiki", plugin).collect();
+
+        assertEquals(List.of(), sitemap.problems());
+        assertTrue(sitemap.alternates("/p/wiki/the-kraken").isEmpty());
+    }
+
+    @Test
+    void neverAdvertisesAnUnpublishedTranslationToACrawler() {
+        // The per-row rule in a fourth place. An alternate a crawler follows to a 404 is worse than no
+        // alternate: it is a promise of a page that is not there.
+        var schema = schema();
+        var ctx = bilingual(schema);
+        var plugin = bilingualWiki(schema, ctx);
+        draft(ctx, "der-krake", Map.of("title", "Der Krake", "markdown", "Ein Tintenfisch.",
+                "locale", "de", "translationOf", "the-kraken", "status", "draft", "baseRevisionNo", 1));
+        plugin.tick();
+
+        var sitemap = new SitemapProviderHarness("wiki", plugin).collect();
+
+        assertEquals(List.of(), sitemap.problems());
+        assertFalse(sitemap.locations().contains("/p/wiki/der-krake"));
+        assertTrue(sitemap.alternates("/p/wiki/the-kraken").isEmpty(),
+                "the group loses its second member, so there is no group left to declare");
+    }
+
+    @Test
+    void leavesAPageWithNoStatedLanguageOutOfItsGroupRatherThanGuessing() {
+        // SitemapUrl requires an entry naming `loc`'s own language, and the site default is a guess. The
+        // page still appears in the sitemap; it just makes no claim.
+        var schema = schema();
+        var ctx = bilingual(schema);
+        var plugin = new WikiPlugin();
+        draft(ctx, "the-kraken", Map.of("title", "The Kraken", "markdown", "A squid."));
+        plugin.register(ctx);
+        draft(ctx, "der-krake", Map.of("title", "Der Krake", "markdown", "Ein Tintenfisch.",
+                "locale", "de", "translationOf", "the-kraken"));
+        plugin.tick();
+
+        var sitemap = new SitemapProviderHarness("wiki", plugin).collect();
+
+        assertEquals(List.of(), sitemap.problems());
+        assertTrue(sitemap.locations().contains("/p/wiki/the-kraken"));
+        assertTrue(sitemap.alternates("/p/wiki/the-kraken").isEmpty());
+        assertTrue(sitemap.alternates("/p/wiki/der-krake").isEmpty(),
+                "one stated language is a group of one, which says nothing");
     }
 
     @Test
