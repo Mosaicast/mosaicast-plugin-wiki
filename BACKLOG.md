@@ -114,10 +114,13 @@ pass that cuts rather than compresses.
 
 ## 3. Release and hygiene
 
-### 3.1 The branch has never been merged
-`feat/phase4-dashboard` is **19 commits** ahead of `master` with no PR — phases 3 and 4, the front page, the
-0.11.0 and 0.12.0 contract moves, languages, translation and the hreflang group. Open it, with the
-screenshots in `assets/screenshots/`.
+### 3.1 Open for review — [PR #18](https://github.com/Mosaicast/mosaicast-plugin-wiki/pull/18)
+`feat/languages-and-translation`, **12 commits** against `master`: the 0.11.0 and 0.12.0 contract moves,
+languages, translation, the hreflang group and the review feedback.
+
+**The count in the earlier version of this entry was wrong.** It said 19, measured against a local `master`
+that was itself 19 commits stale — phases 3 and 4 and the front page had already merged upstream. `git
+fetch` before quoting a distance from a branch you have not pulled in a while.
 
 ### 3.2 The plugin has never been released
 `plugin.json` is still `version: 0.1.0`. `.github/workflows/release.yml` publishes `plugin.tgz` and the
