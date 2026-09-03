@@ -4,7 +4,7 @@
 
 Part of **[Mosaicast](https://github.com/mosaicast)** — an extensible website platform for podcasts. Status: **v1 in development**.
 
-![The wiki at /p/wiki, light and dark](assets/screenshots/phase1-wiki-light-1280.png)
+![A wiki page: its lead, contents, an episode citation, a wiki link and its extracted sources](assets/screenshots/hero-wiki-light-1280.png)
 
 ## What is this?
 A wiki for the site — lore, glossary, people, anything worth a page. It is the one plugin that declares a
@@ -73,6 +73,10 @@ MOSAICAST_PLUGINS="Mosaicast/mosaicast-plugin-wiki@v0.1.0#sha256:<digest from th
 
 Each release attaches `plugin.tgz` and publishes its SHA-256, so the spec above is pinned and auditable —
 which matters, because a plugin runs in-process and unsandboxed.
+
+Cutting one: `scripts/set-version.sh <x.y.z>` moves the plugin's own version in all three files that carry
+it (CI fails the build if they disagree), then add a `CHANGELOG.md` entry, `./build.sh`, run both suites,
+and tag `v<x.y.z>` — the release workflow refuses a tag that disagrees with the manifest.
 
 ## How it stores things
 Three stores, each for what it is good at:

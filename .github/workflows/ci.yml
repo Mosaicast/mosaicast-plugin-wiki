@@ -107,6 +107,18 @@ jobs:
             echo "::error::plugin.json platformApi=$manifest_api but tests use plugin-testkit:$testkit_api"
             exit 1
           }
+
+          # The plugin's OWN version — a different thing from platformApi — lives in three files and nothing
+          # keeps them in step. release.yml compares the tag against the manifest and would catch a drift
+          # there, but only once someone has already published a release whose parts disagree.
+          # `scripts/set-version.sh` is what bumps all three; this is what notices when it was not used.
+          version=$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' plugin.json | head -1)
+          npm_version=$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' frontend/package.json | head -1)
+          gradle_version=$(sed -n 's/^version = "\(.*\)"/\1/p' backend/build.gradle.kts)
+          [ "$version" = "$npm_version" ] && [ "$version" = "$gradle_version" ] || {
+            echo "::error::plugin version disagrees — plugin.json=$version frontend=$npm_version backend=$gradle_version; run scripts/set-version.sh"
+            exit 1
+          }
           echo "dist/ complete, platformApi=$manifest_api ✅"
 
       - uses: actions/upload-artifact@v7

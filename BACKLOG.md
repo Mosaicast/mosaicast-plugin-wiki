@@ -106,9 +106,12 @@ target would translate the label — but a translated label is only an improveme
 resolves, and a reader cannot tell a mistranslated label from a broken link. Decide the behaviour before
 writing it.
 
-### 2.3 CLAUDE.md is over the length guidance — *small*
-223 lines against the "< ~200" it sets for itself. Two contracts' worth of gotchas accumulated. Worth one
-pass that cuts rather than compresses.
+### ~~2.3 CLAUDE.md is over the length guidance~~ — done
+Cut from 229 to 199 by deleting rather than compressing: the bullets that only restated the
+`writing-a-mosaicast-plugin` skill are gone, and "Embeds: decided against" moved to §5, where settled
+decisions belong. Two defects surfaced on the way — a numbered list headed "three ways" that had five items
+with one orphaned above it, and a `backendOwned` list still naming the `episodes` key `ctx.feeds` replaced
+while missing `home`.
 
 ---
 
@@ -122,17 +125,26 @@ languages, translation, the hreflang group and the review feedback.
 that was itself 19 commits stale — phases 3 and 4 and the front page had already merged upstream. `git
 fetch` before quoting a distance from a branch you have not pulled in a while.
 
-### 3.2 The plugin has never been released
-`plugin.json` is still `version: 0.1.0`. `.github/workflows/release.yml` publishes `plugin.tgz` and the
-install-by-spec path (`Mosaicast/mosaicast-plugin-wiki@v<x>#sha256:<digest>`) has never been exercised
-end to end. The `releasing-a-mosaicast-plugin` skill covers it.
+### 3.2 The plugin has never been released — *prepared; the tag is the remaining step*
+Everything a release needs is now in place: `CHANGELOG.md` with the 0.1.0 entry, `scripts/set-version.sh` to
+move the plugin's own version in all three files that carry it, and a CI guard that fails the build when
+they disagree — `release.yml` would only have caught that drift *after* someone published a release whose
+parts contradicted each other.
+
+`0.1.0` stands as written rather than being bumped: it has never been published, so tagging it is the truth,
+and inventing a `0.2.0` would imply a `0.1.0` release that never happened.
+
+**What is left is `git tag v0.1.0` and publishing the GitHub release, on `master` after this merges** —
+tagging an unmerged branch would pin a commit that is not on the mainline. The install-by-spec path stays
+untested end to end until that release exists.
 
 ### 3.3 Dependabot PR #16 is open
 `actions/setup-java` 5.7.0 → 6.0.0. Core already took the same bump.
 
-### 3.4 README's hero image is from phase 1
-`assets/screenshots/phase1-wiki-light-1280.png`, from before the reader had a language switcher, a lead or
-episode cards.
+### ~~3.4 README's hero image is from phase 1~~ — done
+`hero-wiki-{light,dark}-1280.png`, captured against core 0.6.24: the title row with its language menu, a
+lead, a contents list naming the Sources section rendered from structured rows, an episode citation and a
+resolved wiki link. The phase-1 images stay in the folder — earlier PRs link to them.
 
 ---
 
@@ -148,7 +160,19 @@ Two stale claims in the `writing-a-mosaicast-plugin` skill (`mosaicast-skills`),
 
 ---
 
-## 5. Done
+## 5. Decided against
+
+**Embeds and a consent block.** No iframe providers, no `consent` block. Uploads are same-origin under
+`/api/`, so a page shows an image with no CSP host and no consent decision — and declaring any consent
+service would cost the whole site its banner-free state (ARCHITECTURE §12.5) for a feature uploads already
+cover. External image URLs still work. Reopen only with a case uploads cannot serve.
+
+**reStructuredText or LaTeX as the page syntax.** See 1.3 — the ask was really about image width, and the
+three costs are recorded there.
+
+---
+
+## 6. Done
 
 - **1.1 Language switcher as a dropdown.** The icon is a `<details>` button naming the language you are
   reading; the others are behind it. Below two languages nothing renders at all, as before.
