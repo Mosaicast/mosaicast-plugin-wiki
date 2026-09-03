@@ -161,6 +161,31 @@ export const KEY_EPISODES = 'episodes';
 export const KEY_STATS = 'wikistats';
 
 /** Client-written doc keys. Deliberately **not** backend-owned, or the editor would 403 against itself. */
+/**
+ * One file in the wiki's media library, as the doc key `asset:<ref>` holds it.
+ *
+ * **The name never replaces the ref.** A body still says `blob:<ref>`, because a ref is the file's identity
+ * and a name is a label someone may rename tomorrow; this record only makes the file findable again so the
+ * same picture does not have to be uploaded once per page that shows it.
+ *
+ * The document is client-written, like a draft — which is also what keeps the file alive: the backend's
+ * orphan sweep counts a ref named here as referenced, or a file uploaded to the library and not yet placed
+ * on a page would be deleted an hour later.
+ */
+export interface AssetDoc {
+  /** What the author called it. Shown in the picker; never written into a page body. */
+  name: string;
+  /** The MIME type the host stored, so the picker can show a document differently from an image. */
+  mime: string;
+  /** Who added it, for the admin view. */
+  addedBy: string | null;
+  /** When, as an ISO string. */
+  at: string;
+}
+
+export const ASSET_PREFIX = 'asset:';
+export const assetKey = (ref: string) => `${ASSET_PREFIX}${ref}`;
+
 export const draftKey = (slug: string) => `draft:${slug}`;
 export const deleteKey = (slug: string) => `delete:${slug}`;
 

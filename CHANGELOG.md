@@ -16,7 +16,24 @@ warned about, and every entry that moves it says so.
 
 ## [Unreleased]
 
-## [0.1.0] — unreleased
+### Added
+
+- **Image width and placement**, as an attribute suffix on the existing syntax:
+  `![A squid](blob:<ref>){width=320 align=right}`. `320`/`320px` for pixels, `50%` for a share of the
+  column, `align=left|center|right`. Without it an image fills the column, because most uploads are wider
+  than it — which was the actual complaint behind a request to move the whole page syntax to
+  reStructuredText or LaTeX. Nothing an author types reaches the output: a width is parsed to a number and
+  written back out as one, an alignment must be one of three words, and anything else in the block is
+  dropped.
+- **A media library.** Every upload is filed under a name and can be inserted again from a picker, so the
+  same picture is uploaded once rather than once per page. The name is a label; a page body still carries
+  `blob:<ref>`, because a ref is the file's identity and a name is something someone renames. The orphan
+  sweep counts a library entry as a reference, so a file uploaded and not yet placed on a page survives.
+- **Insert buttons for wiki links and episode citations.** Pages and episodes are chosen from a searchable
+  list by title — an episode slug is not something anyone should have to know — with an optional timestamp
+  on a citation, read with the same grammar the rest of the site uses.
+
+## [0.1.0] — 2026-09-03
 
 First release. `platformApi` **0.12.0** (core 0.6.24 or newer).
 

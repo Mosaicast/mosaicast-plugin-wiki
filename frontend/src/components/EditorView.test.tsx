@@ -306,6 +306,88 @@ describe('<EditorView>', () => {
     expect(parked?.markdown).toContain('[de]');
   });
 
+  it('inserts a wiki link chosen from a list, so nobody has to know a slug', async () => {
+    const ctx = ctxFor('the-kraken/edit');
+    await render(ctx);
+
+    await click('.wiki__upload button');            // "Link a page"
+    await click('.wiki__pickerlist button');
+
+    expect(host.querySelector<HTMLTextAreaElement>('#wiki-body')?.value).toContain('[[the-kraken|The Kraken]]');
+  });
+
+  it('cites an episode by its title, with the timestamp the shared grammar accepts', async () => {
+    // `ctx.episodes` is the access-filtered list and `ctx.episodeLabels` the human names; the SDK says to
+    // use them in pickers for exactly this reason. The stamp goes through `parseTimestamp`, not a fifth
+    // implementation of the `?t=` grammar.
+    const ctx = ctxFor('the-kraken/edit', {
+      episodes: ['s01e02'],
+      episodeLabels: { s01e02: 'S01E02 · The Lighthouse' },
+    });
+    await render(ctx);
+
+    await click('.wiki__upload button:nth-of-type(2)');   // "Cite an episode"
+    await type('.wiki__stamp', '12:04');
+    await click('.wiki__pickerlist button');
+
+    expect(host.querySelector<HTMLTextAreaElement>('#wiki-body')?.value)
+      .toContain('[[episode:s01e02@12:04|S01E02 · The Lighthouse]]');
+  });
+
+  it('says a timestamp is unreadable instead of guessing at one', async () => {
+    const ctx = ctxFor('the-kraken/edit', {
+      episodes: ['s01e02'],
+      episodeLabels: { s01e02: 'S01E02 · The Lighthouse' },
+    });
+    await render(ctx);
+
+    await click('.wiki__upload button:nth-of-type(2)');
+    await type('.wiki__stamp', 'halfway');
+
+    expect(host.textContent).toContain('Not a time this reads');
+  });
+
+  it('files an upload in the library, which is also what keeps it alive', async () => {
+    // A library entry is the only thing referencing a file between uploading it and placing it on a page.
+    // Without the doc the backend's sweep would delete it an hour later.
+    const ctx = ctxFor('the-kraken/edit');
+    await render(ctx);
+
+    const input = host.querySelector<HTMLInputElement>('input[type=file]')!;
+    Object.defineProperty(input, 'files', {
+      value: [new File(['x'], 'kraken photo.png', { type: 'image/png' })],
+      configurable: true,
+    });
+    await act(async () => {
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await flush();
+    await flush();
+
+    const filed = ctx.api.calls.find((call) => call.method === 'put' && call.path.includes('/asset:'));
+    expect(filed?.body).toMatchObject({ name: 'kraken photo', mime: 'image/png' });
+    expect(host.querySelector<HTMLTextAreaElement>('#wiki-body')?.value).toContain('](blob:');
+  });
+
+  it('offers what is already in the library rather than a second upload', async () => {
+    const ctx = ctxFor('the-kraken/edit', {
+      apiResponses: {
+        'data/site/main/index': INDEX,
+        'data/site/main?prefix=asset:&size=100': {
+          items: [{ key: 'asset:abc-123', value: { name: 'The kraken photo', mime: 'image/png' } }],
+        },
+      },
+    });
+    await render(ctx);
+
+    await click('.wiki__upload button:nth-of-type(3)');   // "From the library"
+    await flush();
+    await click('.wiki__pickerlist button');
+
+    expect(host.querySelector<HTMLTextAreaElement>('#wiki-body')?.value)
+      .toContain('![The kraken photo](blob:abc-123)');
+  });
+
   it('says a save is queued instead of claiming it landed', async () => {
     const ctx = ctxFor('the-kraken/edit');
     await render(ctx);

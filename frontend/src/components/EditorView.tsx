@@ -3,9 +3,19 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from 'react';
 import { isPluginApiError, type PluginContext } from '@mosaicast/plugin-sdk';
-import { renderPage } from '../markdown';
+import { formatTimestamp, parseTimestamp, renderPage } from '../markdown';
 import { routeHref, routePath, toSlug, type WikiRoute } from '../routes';
-import { deleteKey, draftKey, SITE_PATH, type IngestReceipt, type PageRow, type PageSummary } from '../types';
+import {
+  ASSET_PREFIX,
+  assetKey,
+  deleteKey,
+  draftKey,
+  SITE_PATH,
+  type AssetDoc,
+  type IngestReceipt,
+  type PageRow,
+  type PageSummary,
+} from '../types';
 import type { PluginI18n } from '../i18n';
 import { defaultContentLocale, isMultilingual, localeName } from '../languages';
 import { peekTranslation, stashTranslation, translatePage, type TranslationDraft } from '../translate';
@@ -13,6 +23,9 @@ import { Icon } from '../icons';
 import { describeApiError } from './useDoc';
 
 /** How often to re-read the ingest receipt while a save is queued. */
+/** How many rows a picker shows before searching is the better move than scrolling. */
+const PICKER_LIMIT = 40;
+
 const POLL_MS = 2_000;
 
 /** How long to keep polling before saying so. The backend tick is configurable, so this is generous. */
@@ -80,6 +93,7 @@ export function EditorView({ ctx, i18n, slug, index, go }: EditorViewProps) {
 
   const [save, setSave] = useState<SaveState>({ phase: 'idle' });
   const [upload, setUpload] = useState<{ busy: boolean; error: string | null }>({ busy: false, error: null });
+  const [picker, setPicker] = useState<'page' | 'episode' | 'library' | null>(null);
   const [quota, setQuota] = useState<{ usedBytes: number; quotaBytes: number; maxFileBytes: number } | null>(null);
   const [vocabulary, setVocabulary] = useState<{ tag: string; label: string }[]>([]);
   const bodyRef = useRef<HTMLTextAreaElement>(null);
@@ -228,9 +242,23 @@ export function EditorView({ ctx, i18n, slug, index, go }: EditorViewProps) {
     setUpload({ busy: true, error: null });
     try {
       const stored = await ctx.blobs.upload(file);
+      const name = file.name.replace(/[[\]]/g, '').replace(/\.[^.]+$/, '');
       // The ref is the identity; the URL is derived at render time. Writing a URL into the body would be
       // a copy of a decision the host is entitled to change.
-      insertAtCaret(`![${file.name.replace(/[[\]]/g, '')}](blob:${stored.ref})`);
+      insertAtCaret(`![${name}](blob:${stored.ref})`);
+      // File it in the library on the way past, so the same picture never has to be uploaded twice. This
+      // is also what keeps it alive: the backend's sweep counts a ref named here as referenced, so a file
+      // uploaded and not yet placed survives the grace period.
+      await ctx.api
+        .put(`${SITE_PATH}/${assetKey(stored.ref)}`, {
+          name,
+          mime: stored.mime,
+          addedBy: ctx.user?.id ?? null,
+          at: new Date().toISOString(),
+        } satisfies AssetDoc)
+        // Narrow on purpose: the image is already uploaded and already in the body. Losing the library
+        // entry costs findability later, and must not be reported as a failed upload now.
+        .catch((error: unknown) => ctx.log('warn', `wiki: file not added to the library: ${describeApiError(error)}`));
       setUpload({ busy: false, error: null });
       ctx.blobs.quota().then(setQuota).catch(() => undefined);
     } catch (error: unknown) {
@@ -611,6 +639,50 @@ export function EditorView({ ctx, i18n, slug, index, go }: EditorViewProps) {
           />
           <p className="wiki__hint">{i18n.t('editor.syntaxHint')}</p>
 
+          <div className="wiki__upload">
+            {/* Buttons rather than syntax to memorise: a page slug is guessable, an episode slug is not. */}
+            <button
+              type="button"
+              className="wiki__btn wiki__btn--ghost"
+              onClick={() => setPicker(picker === 'page' ? null : 'page')}
+            >
+              <Icon name="link" />
+              {i18n.t('editor.insertPage')}
+            </button>
+            <button
+              type="button"
+              className="wiki__btn wiki__btn--ghost"
+              onClick={() => setPicker(picker === 'episode' ? null : 'episode')}
+            >
+              <Icon name="music" />
+              {i18n.t('editor.insertEpisode')}
+            </button>
+            {ctx.blobs && (
+              <button
+                type="button"
+                className="wiki__btn wiki__btn--ghost"
+                onClick={() => setPicker(picker === 'library' ? null : 'library')}
+              >
+                <Icon name="image" />
+                {i18n.t('editor.insertLibrary')}
+              </button>
+            )}
+          </div>
+
+          {picker && (
+            <InsertPicker
+              kind={picker}
+              ctx={ctx}
+              i18n={i18n}
+              index={index}
+              onInsert={(snippet) => {
+                insertAtCaret(snippet);
+                setPicker(null);
+              }}
+              onClose={() => setPicker(null)}
+            />
+          )}
+
           {ctx.blobs && (
             <div className="wiki__upload">
               <label className="wiki__btn wiki__btn--ghost">
@@ -743,4 +815,154 @@ function SaveStatus({
         </p>
       );
   }
+}
+
+/**
+ * The insert pickers: a page, an episode, or a file already in the library.
+ *
+ * **A slug is not something to know by heart.** `[[the-kraken]]` and `[[episode:s01e02@12:04]]` are terse to
+ * read and unguessable to write — an author has to remember an episode's slug, and there is no reason they
+ * would. The host hands over `ctx.episodes` (access-filtered) and `ctx.episodeLabels`, and the SDK says in
+ * as many words to use them in pickers so people see titles; the page list is the `index` projection the
+ * editor already holds.
+ */
+function InsertPicker({
+  kind,
+  ctx,
+  i18n,
+  index,
+  onInsert,
+  onClose,
+}: {
+  kind: 'page' | 'episode' | 'library';
+  ctx: PluginContext;
+  i18n: PluginI18n;
+  index: Record<string, PageSummary>;
+  onInsert(snippet: string): void;
+  onClose(): void;
+}) {
+  const [query, setQuery] = useState('');
+  const [stamp, setStamp] = useState('');
+  const [library, setLibrary] = useState<{ ref: string; name: string; mime: string }[]>([]);
+
+  useEffect(() => {
+    if (kind !== 'library') {
+      return;
+    }
+    let cancelled = false;
+    ctx.api
+      .get<{ items: { key: string; value: AssetDoc }[] }>(`${SITE_PATH}?prefix=${ASSET_PREFIX}&size=100`)
+      .then((page) => {
+        if (!cancelled) {
+          setLibrary(
+            page.items.map((entry) => ({
+              ref: entry.key.slice(ASSET_PREFIX.length),
+              name: entry.value?.name ?? entry.key.slice(ASSET_PREFIX.length),
+              mime: entry.value?.mime ?? '',
+            })),
+          );
+        }
+      })
+      // Swallowed narrowly: an empty library still leaves upload working, which is the way in anyway.
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [ctx, kind]);
+
+  const needle = query.trim().toLowerCase();
+  const matches = (text: string) => !needle || text.toLowerCase().includes(needle);
+
+  // `parseTimestamp` is the shared `?t=` grammar, not a fifth implementation of it. An unreadable value is
+  // dropped rather than guessed, which is why the field says so instead of refusing to submit.
+  const seconds = stamp.trim() ? parseTimestamp(stamp.trim()) : undefined;
+  const stampBad = stamp.trim() !== '' && seconds === undefined;
+
+  const pages = Object.entries(index)
+    .filter(([slug, summary]) => matches(summary.title || slug) || matches(slug))
+    .sort(([, a], [, b]) => (a.title || '').localeCompare(b.title || ''))
+    .slice(0, PICKER_LIMIT);
+
+  const episodes = ctx.episodes
+    .map((slug) => ({ slug, label: ctx.episodeLabels?.[slug] ?? slug }))
+    .filter((episode) => matches(episode.label) || matches(episode.slug))
+    .slice(0, PICKER_LIMIT);
+
+  const files = library.filter((file) => matches(file.name)).slice(0, PICKER_LIMIT);
+
+  return (
+    <div className="wiki__picker">
+      <div className="wiki__pickerbar">
+        <input
+          className="wiki__input"
+          type="search"
+          autoFocus
+          value={query}
+          placeholder={i18n.t(`editor.pick.${kind}`)}
+          aria-label={i18n.t(`editor.pick.${kind}`)}
+          onChange={(event) => setQuery(event.target.value)}
+        />
+        {kind === 'episode' && (
+          <input
+            className="wiki__input wiki__stamp"
+            value={stamp}
+            placeholder={i18n.t('editor.pick.at')}
+            aria-label={i18n.t('editor.pick.at')}
+            onChange={(event) => setStamp(event.target.value)}
+          />
+        )}
+        <button type="button" className="wiki__btn wiki__btn--ghost" onClick={onClose}>
+          {i18n.t('editor.pick.close')}
+        </button>
+      </div>
+      {stampBad && <p className="wiki__error">{i18n.t('editor.pick.badStamp')}</p>}
+
+      <ul className="wiki__pickerlist">
+        {kind === 'page' &&
+          pages.map(([slug, summary]) => (
+            <li key={slug}>
+              <button type="button" onClick={() => onInsert(`[[${slug}|${summary.title || slug}]]`)}>
+                <span>{summary.title || slug}</span>
+                <code>{slug}</code>
+              </button>
+            </li>
+          ))}
+
+        {kind === 'episode' &&
+          episodes.map((episode) => (
+            <li key={episode.slug}>
+              <button
+                type="button"
+                onClick={() =>
+                  onInsert(
+                    `[[episode:${episode.slug}${seconds === undefined ? '' : `@${formatTimestamp(seconds)}`}|${episode.label}]]`,
+                  )
+                }
+              >
+                <span>{episode.label}</span>
+                <code>{episode.slug}</code>
+              </button>
+            </li>
+          ))}
+
+        {kind === 'library' &&
+          files.map((file) => (
+            <li key={file.ref}>
+              <button type="button" onClick={() => onInsert(`![${file.name}](blob:${file.ref})`)}>
+                {ctx.blobs && file.mime.startsWith('image/') && (
+                  <img className="wiki__thumb" src={ctx.blobs.urlFor(file.ref)} alt="" />
+                )}
+                <span>{file.name}</span>
+              </button>
+            </li>
+          ))}
+      </ul>
+
+      {((kind === 'page' && pages.length === 0) ||
+        (kind === 'episode' && episodes.length === 0) ||
+        (kind === 'library' && files.length === 0)) && (
+        <p className="wiki__hint">{i18n.t(`editor.pick.none.${kind}`)}</p>
+      )}
+    </div>
+  );
 }

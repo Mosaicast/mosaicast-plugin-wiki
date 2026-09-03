@@ -49,6 +49,25 @@ The `Sources` heading a page uses is a setting (`sourceHeadings`, default `sourc
 written in a language the shell has never shipped can still have its sources extracted — add the word and
 re-save the page.
 
+## Writing a page
+Markdown, plus four things the wiki adds:
+
+```
+[[the-kraken]]  [[the-kraken|the beast]]        a wiki link; unwritten pages show as red links
+[[episode:s01e02]]  [[episode:s01e02@12:04]]    an episode, optionally at a moment
+![A squid](blob:<ref>){width=320 align=right}   an image, sized and placed
+## Sources                                      becomes the page's structured source list
+```
+
+Nobody has to type any of it. The editor has buttons to **link a page**, **cite an episode** (by title, with
+an optional timestamp) and insert something **from the library** — every image you upload is filed there
+under a name, so the same picture is uploaded once and reused everywhere.
+
+`{width=…}` is markdown's missing image control: `320` or `320px` for pixels, `50%` for a share of the
+column, and `align=left|center|right`. Without it an image fills the column, because most uploads are wider
+than it. The heading a page opens its sources with is a setting, so a wiki written in a language the shell
+has never shipped can still have its sources extracted.
+
 ## Build & test
 ```bash
 ./build.sh                                       # -> dist/

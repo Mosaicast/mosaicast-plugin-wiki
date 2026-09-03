@@ -13,6 +13,8 @@
  */
 import { ICON_CSS } from '../icons';
 
+// NOTE: no backticks in the comments below — this whole block is one template literal, and a stray
+// backtick ends it mid-rule. It has broken the build three times; `npm run typecheck` is what catches it.
 export const WIKI_CSS = ICON_CSS + `
   :host { display: block; container-type: inline-size; }
   .wiki {
@@ -106,6 +108,14 @@ export const WIKI_CSS = ICON_CSS + `
   .wiki__body p { margin: 0 0 1rem; }
   .wiki__body ul, .wiki__body ol { margin: 0 0 1rem; padding-left: 1.25rem; }
   .wiki__body img { max-width: 100%; height: auto; border-radius: .5rem; }
+  /* An author-chosen width arrives as an inline style; max-width above stays the ceiling, so a width
+     wider than the column still cannot overflow on a phone. */
+  .wiki__body img.wiki__img { display: block; }
+  .wiki__body img.wiki__img--center { margin-inline: auto; }
+  .wiki__body img.wiki__img--left  { float: left;  margin: .25rem 1rem .5rem 0; }
+  .wiki__body img.wiki__img--right { float: right; margin: .25rem 0 .5rem 1rem; }
+  /* A float must not escape its paragraph into the next section's heading. */
+  .wiki__body h2, .wiki__body h3 { clear: both; }
   .wiki__body blockquote {
     margin: 0 0 1rem; padding: .25rem 0 .25rem .9rem;
     border-left: 3px solid var(--mc-border); color: var(--mc-text-muted);
@@ -252,6 +262,31 @@ export const WIKI_CSS = ICON_CSS + `
     white-space: pre-wrap; word-break: break-word;
   }
   .wiki__upload { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; margin-top: .5rem; }
+
+  /* An insert picker: a search field and a list of things to click, opened under the toolbar it belongs to
+     rather than in a dialog. It replaces knowing a slug by heart, so it has to be quicker than typing one. */
+  .wiki__picker {
+    margin-top: .5rem; padding: .5rem;
+    background: var(--mc-surface); border: 1px solid var(--mc-border); border-radius: .5rem;
+  }
+  .wiki__pickerbar { display: flex; flex-wrap: wrap; gap: .5rem; }
+  .wiki__pickerbar .wiki__input { flex: 1 1 12rem; }
+  .wiki__stamp { flex: 0 0 7rem; }
+  .wiki__pickerlist { max-height: 15rem; margin: .5rem 0 0; padding: 0; overflow-y: auto; list-style: none; }
+  .wiki__pickerlist button {
+    display: flex; align-items: center; gap: .5rem; width: 100%;
+    padding: .35rem .5rem; border: 0; border-radius: .375rem;
+    color: var(--mc-text); background: transparent;
+    font: inherit; font-size: .875rem; text-align: left; cursor: pointer;
+  }
+  .wiki__pickerlist button:hover { background: var(--mc-bg); }
+  .wiki__pickerlist button:focus-visible { outline: 2px solid var(--mc-accent); outline-offset: -2px; }
+  .wiki__pickerlist span { flex: 1 1 auto; }
+  .wiki__pickerlist code {
+    flex: none; color: var(--mc-text-muted);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .75rem;
+  }
+  .wiki__thumb { flex: none; width: 2.5rem; height: 2.5rem; object-fit: cover; border-radius: .25rem; }
   .wiki__upload .wiki__btn { cursor: pointer; }
   .wiki__actions { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: 1.25rem; }
   .wiki__btn--danger { color: var(--mc-text); background: transparent; border-color: var(--mc-accent-2); }
@@ -340,6 +375,9 @@ export const WIKI_CSS = ICON_CSS + `
     .wiki__search { flex: 0 0 auto; }
     /* Side-by-side editing needs width the phone has not got; the preview follows the body instead. */
     .wiki__editor, .wiki__row { grid-template-columns: 1fr; }
+    /* A floated image beside a 20-character measure is not a layout. Below this width they stack. */
+    .wiki__body img.wiki__img--left,
+    .wiki__body img.wiki__img--right { float: none; margin: .25rem 0 .5rem; }
     /* Icon only: at this width the language's name is the difference between a title with room to breathe
        and one broken across three lines. The summary keeps its aria-label, so the control is still named
        for anyone who cannot see which icon it is. */

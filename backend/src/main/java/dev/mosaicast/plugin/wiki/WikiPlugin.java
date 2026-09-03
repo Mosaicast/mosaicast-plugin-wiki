@@ -117,6 +117,9 @@ public class WikiPlugin implements PluginBackend, ShareMetadataProvider, Sitemap
     /** The namespace this plugin tags under. Opaque to the host, and nobody else can name it. */
     private static final String TAG_SUBJECT_PREFIX = "page:";
 
+    /** The client-written media-library keys, {@code asset:<ref>}. Never reserved: the editor writes them. */
+    static final String ASSET_PREFIX = "asset:";
+
     /** How many files one sweep looks at. A wiki's library is small; this bounds a pathological one. */
     private static final int BLOB_PAGE = 200;
 
@@ -598,6 +601,12 @@ public class WikiPlugin implements PluginBackend, ShareMetadataProvider, Sitemap
         // A ref sitting in an unapplied draft is live too -- the body is written, just not ingested yet.
         for (DocEntry draft : ctx.store().query(Scope.site(), DRAFT_PREFIX)) {
             referenced.addAll(refsIn(draft.value() == null ? null : draft.value().toString()));
+        }
+        // And a file in the media library, which is the whole point of a library: it is uploaded once,
+        // named, and placed on a page later -- possibly much later. Without this it has no `media` row and
+        // no draft naming it, so the sweep would delete a podcaster's uploads an hour after they arrived.
+        for (DocEntry asset : ctx.store().query(Scope.site(), ASSET_PREFIX)) {
+            referenced.add(asset.key().substring(ASSET_PREFIX.length()));
         }
 
         int removed = 0;
