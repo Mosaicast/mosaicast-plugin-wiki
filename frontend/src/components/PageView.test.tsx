@@ -154,6 +154,21 @@ describe('<WikiPage> — reader', () => {
     expect(menu?.querySelector('.wiki__lang--current')?.textContent).toBe('English');
   });
 
+  it('puts the page controls before the heading, which is what the float depends on', async () => {
+    // Layout, pinned as structure because jsdom has none. The controls are floated so the title's first
+    // line shortens around them and the rest wraps full width underneath -- and a float only affects
+    // content that comes AFTER it in source order. Move this div below the h1 to "tidy" the markup and the
+    // controls silently drop onto their own line again.
+    const ctx = ctxFor('the-kraken', { page: [{ ...KRAKEN, locale: 'en' }] });
+
+    await render(ctx);
+
+    const row = host.querySelector('.wiki__titlerow')!;
+    const order = [...row.children].map((child) => child.className);
+    expect(order[0]).toBe('wiki__pagetools');
+    expect(order[1]).toBe('wiki__title');
+  });
+
   it('gives the icon-only page controls a name only a screen reader reads', async () => {
     // `Icon` is aria-hidden by contract, so an icon-only control announced as nothing is a control nobody
     // can use. The label leaves the page, not the accessibility tree.
@@ -164,6 +179,35 @@ describe('<WikiPage> — reader', () => {
     const buttons = [...host.querySelectorAll('.wiki__iconbtn')];
     expect(buttons.map((b) => b.querySelector('.wiki__vh')?.textContent)).toContain('History');
     expect(buttons.every((b) => b.getAttribute('title'))).toBe(true);
+  });
+
+  it('names the language menu, since narrow screens render it as an icon alone', async () => {
+    // Below 30rem the language's name is hidden to give the title its width back. The summary's own label
+    // is then the only thing naming the control.
+    const ctx = makeMockCtx({
+      route: { path: 'the-kraken' },
+      apiResponses: {
+        'data/site/main/index': {
+          ...INDEX,
+          'the-kraken': { ...INDEX['the-kraken'], locale: 'en', translationOf: null },
+          'der-krake': { title: 'Der Krake', summary: null, tags: null, updatedAt: null, locale: 'de', translationOf: 'the-kraken' },
+        },
+      },
+      schema: makeMockSchema({ page: [{ ...KRAKEN, locale: 'en' }], link: [], source: [], media: [], revision: [] }),
+      locale: {
+        current: () => 'en',
+        onChange: () => () => {},
+        available: () => [{ code: 'en', nativeName: 'English', isDefault: true }],
+        content: () => [
+          { code: 'en', nativeName: 'English', isDefault: true },
+          { code: 'de', nativeName: 'Deutsch', isDefault: false },
+        ],
+      },
+    });
+
+    await render(ctx);
+
+    expect(host.querySelector('.wiki__langmenu summary')?.getAttribute('aria-label')).toBe('Languages');
   });
 
   it('never lists a translation that is not published, since the index cannot hold one', async () => {

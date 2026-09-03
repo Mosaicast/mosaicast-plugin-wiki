@@ -146,12 +146,18 @@ export const WIKI_CSS = ICON_CSS + `
 
   /* The title and the controls that act on this page, on one line. Right-aligned so the heading keeps the
      left edge every other block on the page shares. */
-  .wiki__titlerow {
-    display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between;
-    gap: .5rem 1rem; margin-bottom: .25rem;
+  /* flow-root, so the float is contained without overflow:hidden -- which would clip the language menu
+     the moment it opened. */
+  .wiki__titlerow { display: flow-root; margin-bottom: .25rem; }
+  .wiki__titlerow .wiki__title { margin: 0; }
+  /* Floated rather than a flex sibling: a flex row can only shrink the heading or push the controls onto
+     their own line, and neither is what a title longer than one line should do. A float shortens just the
+     line boxes it sits beside, so the controls stay level with the first line and the rest of the title
+     wraps full width underneath them. */
+  .wiki__pagetools {
+    float: right; display: flex; align-items: center; gap: .25rem;
+    margin-left: 1rem;
   }
-  .wiki__titlerow .wiki__title { margin: 0; flex: 1 1 12rem; }
-  .wiki__pagetools { display: flex; align-items: center; gap: .25rem; flex: 0 0 auto; }
 
   /* Icon-only, so it needs a hit area a finger can reach and a label only a screen reader reads. */
   .wiki__iconbtn {
@@ -334,13 +340,11 @@ export const WIKI_CSS = ICON_CSS + `
     .wiki__search { flex: 0 0 auto; }
     /* Side-by-side editing needs width the phone has not got; the preview follows the body instead. */
     .wiki__editor, .wiki__row { grid-template-columns: 1fr; }
-    /* The controls drop below the heading rather than squeezing it: at this width a wrapped title beside
-       three 2rem controls leaves the title about four characters wide. */
-    .wiki__titlerow { flex-direction: column; align-items: stretch; }
-    /* The same trap the search bar carries a note about: this is now a COLUMN flex container, so the row
-       layout's flex-basis of 12rem sizes the heading's HEIGHT and leaves 12rem of nothing below. */
-    .wiki__titlerow .wiki__title { flex: 0 0 auto; }
-    .wiki__pagetools { justify-content: flex-end; }
+    /* Icon only: at this width the language's name is the difference between a title with room to breathe
+       and one broken across three lines. The summary keeps its aria-label, so the control is still named
+       for anyone who cannot see which icon it is. */
+    .wiki__langmenu > summary { padding: 0 .35rem; }
+    .wiki__langcurrent { display: none; }
     .wiki__area, .wiki__preview { min-height: 12rem; }
   }
 `;

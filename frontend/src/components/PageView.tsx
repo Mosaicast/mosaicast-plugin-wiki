@@ -191,9 +191,10 @@ export function PageView({ ctx, i18n, slug, index, go }: PageViewProps) {
     // `lang` is the cheapest thing this field buys and the one with the widest reach: a screen reader picks
     // the right voice, and a browser stops offering to translate a page into the language it is already in.
     <article lang={page.locale ?? undefined}>
+      {/* The controls come before the heading because they FLOAT: a float only shortens the line boxes of
+          content after it in source order, which is what pins them to the title's first line and lets a
+          long title wrap underneath rather than pushing them down. */}
       <div className="wiki__titlerow">
-        <h1 className="wiki__title">{page.title}</h1>
-
         <div className="wiki__pagetools">
           {variants.length > 0 && (
             /* A `<details>` rather than a button and a listbox: inside a shadow root that buys keyboard
@@ -252,6 +253,7 @@ export function PageView({ ctx, i18n, slug, index, go }: PageViewProps) {
             </a>
           )}
         </div>
+        <h1 className="wiki__title">{page.title}</h1>
       </div>
 
       <p className="wiki__meta">
