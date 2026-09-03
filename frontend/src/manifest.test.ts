@@ -23,7 +23,9 @@ describe('plugin.json', () => {
         pattern === '*' ? true : pattern.endsWith('*') ? key.startsWith(pattern.slice(0, -1)) : key === pattern,
       );
 
-    for (const key of ['draft:kraken', 'delete:kraken']) {
+    // `asset:` joined these when the media library landed: the editor writes one per upload, and reserving
+    // the prefix would 403 the plugin's own picker against its own plugin.
+    for (const key of ['draft:kraken', 'delete:kraken', 'asset:abc-123']) {
       expect(covered(key)).toBe(false);
     }
     for (const key of ['index', 'wikistats', 'ingest:kraken']) {

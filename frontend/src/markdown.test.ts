@@ -2,7 +2,16 @@
 // SPDX-FileCopyrightText: 2026 The Mosaicast Authors
 
 import { describe, expect, it } from 'vitest';
-import { formatTimestamp, parseTimestamp, renderPage, stripSourcesSection, type RenderOptions } from './markdown';
+import {
+  formatImage,
+  formatTimestamp,
+  imageTokenAt,
+  parseImageAttrs,
+  parseTimestamp,
+  renderPage,
+  stripSourcesSection,
+  type RenderOptions,
+} from './markdown';
 
 const options = (over: Partial<RenderOptions> = {}): RenderOptions => ({
   hasPage: (slug) => slug === 'the-kraken',
@@ -203,5 +212,118 @@ describe('stripSourcesSection', () => {
   it('leaves a body without one untouched', () => {
     expect(stripSourcesSection('Just prose.')).toBe('Just prose.');
     expect(stripSourcesSection('Just prose.', 'Fuentes')).toBe('Just prose.');
+  });
+});
+
+describe('image attributes', () => {
+  const opts: RenderOptions = {
+    hasPage: () => true,
+    episodeHref: (slug) => `/episodes/${slug}`,
+    blobUrl: (ref) => `/api/plugins/wiki/blob/${ref}`,
+  };
+
+  it('reads a width in pixels or percent, and an alignment', () => {
+    expect(parseImageAttrs('width=320')).toEqual({ width: '320px', align: null });
+    expect(parseImageAttrs('width=320px align=right')).toEqual({ width: '320px', align: 'right' });
+    expect(parseImageAttrs('width=50%')).toEqual({ width: '50%', align: null });
+    expect(parseImageAttrs('align=center')).toEqual({ width: null, align: 'center' });
+  });
+
+  it('drops anything it did not ask for rather than rendering it', () => {
+    // The value is regenerated from a number, never interpolated, which is what makes writing a style
+    // attribute safe here. A width that is not a number, or an alignment that is not one of three words,
+    // simply does not appear.
+    expect(parseImageAttrs('width=onhundred')).toEqual({ width: null, align: null });
+    expect(parseImageAttrs('width=0')).toEqual({ width: null, align: null });
+    expect(parseImageAttrs('width=200%')).toEqual({ width: null, align: null });
+    expect(parseImageAttrs('align=diagonal')).toEqual({ width: null, align: null });
+    expect(parseImageAttrs('onerror=alert(1)')).toEqual({ width: null, align: null });
+    expect(parseImageAttrs('width=100;background:url(x)')).toEqual({ width: null, align: null });
+  });
+
+  it('renders a sized upload as an img the sanitiser keeps', () => {
+    const html = renderPage('![A squid](blob:abc-123){width=320 align=right}', opts).html;
+
+    expect(html).toContain('src="/api/plugins/wiki/blob/abc-123"');
+    expect(html).toContain('width:320px');
+    expect(html).toContain('wiki__img--right');
+    expect(html).not.toContain('{width');
+  });
+
+  it('makes a sized image a block, so two in a row stack like unsized ones do', () => {
+    // A raw <img> is an HTML *block* to marked and gets no wrapping paragraph, so without this two sized
+    // images render side by side and an author who wrote them on separate lines is surprised.
+    const html = renderPage(`![One](blob:a){width=100}\n\n![Two](blob:b){width=100}`, opts).html;
+
+    expect(html.match(/class="wiki__img"/g)).toHaveLength(2);
+  });
+
+  it('sizes an external image too', () => {
+    const html = renderPage('![Chart](https://example.org/c.png){width=50%}', opts).html;
+
+    expect(html).toContain('src="https://example.org/c.png"');
+    expect(html).toContain('width:50%');
+  });
+
+  it('leaves an image with no attribute block exactly as it was', () => {
+    const html = renderPage('![A squid](blob:abc-123)', opts).html;
+
+    expect(html).toContain('/api/plugins/wiki/blob/abc-123');
+    expect(html).not.toContain('style=');
+  });
+
+  it('drops a sized upload when there is no file storage, like an unsized one', () => {
+    const html = renderPage('![A squid](blob:abc-123){width=320}', { ...opts, blobUrl: undefined }).html;
+
+    expect(html).not.toContain('<img');
+    expect(html).toContain('A squid');
+  });
+});
+
+describe('editing an image already in the body', () => {
+  const body = 'Before.\n\n![A squid](blob:abc){width=320 align=right}\n\nAfter.';
+
+  it('finds the image the caret is sitting in', () => {
+    // The stand-in for right-clicking an image: a textarea has text, not images, so the affordance has to
+    // be the token the caret is already inside.
+    const found = imageTokenAt(body, body.indexOf('squid'))!;
+
+    expect(found).toMatchObject({ alt: 'A squid', target: 'blob:abc', width: '320px', align: 'right' });
+    expect(body.slice(found.start, found.end)).toBe('![A squid](blob:abc){width=320 align=right}');
+  });
+
+  it('counts the caret at either edge of the token, including just after inserting one', () => {
+    const start = body.indexOf('![A squid');
+    const end = start + '![A squid](blob:abc){width=320 align=right}'.length;
+
+    expect(imageTokenAt(body, start)).not.toBeNull();
+    expect(imageTokenAt(body, end)).not.toBeNull();
+    expect(imageTokenAt(body, 0)).toBeNull();
+  });
+
+  it('writes an image back out, and omits the block when there is nothing to say', () => {
+    expect(formatImage({ alt: 'A squid', target: 'blob:abc' })).toBe('![A squid](blob:abc)');
+    expect(formatImage({ alt: 'A squid', target: 'blob:abc', width: null, align: null }))
+      .toBe('![A squid](blob:abc)');
+    expect(formatImage({ alt: 'A squid', target: 'blob:abc', width: '320px', align: 'right' }))
+      .toBe('![A squid](blob:abc){width=320px align=right}');
+    expect(formatImage({ alt: 'A squid', target: 'blob:abc', align: 'center' }))
+      .toBe('![A squid](blob:abc){align=center}');
+  });
+
+  it('round-trips: what it reads it can write back unchanged', () => {
+    const found = imageTokenAt(body, body.indexOf('squid'))!;
+
+    expect(formatImage(found)).toBe('![A squid](blob:abc){width=320px align=right}');
+    // …and reading that again gives the same thing, so repeated edits do not drift.
+    expect(imageTokenAt(formatImage(found), 3)).toMatchObject({ width: '320px', align: 'right' });
+  });
+
+  it('finds an unsized image too, so options can be added to one that has none', () => {
+    const plain = 'Text ![Plain](blob:xyz) more.';
+
+    expect(imageTokenAt(plain, plain.indexOf('Plain'))).toMatchObject({
+      alt: 'Plain', target: 'blob:xyz', width: null, align: null,
+    });
   });
 });

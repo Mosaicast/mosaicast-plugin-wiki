@@ -306,6 +306,206 @@ describe('<EditorView>', () => {
     expect(parked?.markdown).toContain('[de]');
   });
 
+  it('inserts a wiki link chosen from a list, so nobody has to know a slug', async () => {
+    const ctx = ctxFor('the-kraken/edit');
+    await render(ctx);
+
+    await click('.wiki__upload button');            // "Link a page"
+    await click('.wiki__pickerlist button');
+
+    expect(host.querySelector<HTMLTextAreaElement>('#wiki-body')?.value).toContain('[[the-kraken|The Kraken]]');
+  });
+
+  it('cites an episode by its title, with the timestamp the shared grammar accepts', async () => {
+    // `ctx.episodes` is the access-filtered list and `ctx.episodeLabels` the human names; the SDK says to
+    // use them in pickers for exactly this reason. The stamp goes through `parseTimestamp`, not a fifth
+    // implementation of the `?t=` grammar.
+    const ctx = ctxFor('the-kraken/edit', {
+      episodes: ['s01e02'],
+      episodeLabels: { s01e02: 'S01E02 · The Lighthouse' },
+    });
+    await render(ctx);
+
+    await click('.wiki__upload button:nth-of-type(2)');   // "Cite an episode"
+    await type('.wiki__stamp', '12:04');
+    await click('.wiki__pickerlist button');
+
+    expect(host.querySelector<HTMLTextAreaElement>('#wiki-body')?.value)
+      .toContain('[[episode:s01e02@12:04|S01E02 · The Lighthouse]]');
+  });
+
+  it('says a timestamp is unreadable instead of guessing at one', async () => {
+    const ctx = ctxFor('the-kraken/edit', {
+      episodes: ['s01e02'],
+      episodeLabels: { s01e02: 'S01E02 · The Lighthouse' },
+    });
+    await render(ctx);
+
+    await click('.wiki__upload button:nth-of-type(2)');
+    await type('.wiki__stamp', 'halfway');
+
+    expect(host.textContent).toContain('Not a time this reads');
+  });
+
+  it('files an upload in the library, which is also what keeps it alive', async () => {
+    // A library entry is the only thing referencing a file between uploading it and placing it on a page.
+    // Without the doc the backend's sweep would delete it an hour later.
+    const ctx = ctxFor('the-kraken/edit');
+    await render(ctx);
+
+    const input = host.querySelector<HTMLInputElement>('input[type=file]')!;
+    Object.defineProperty(input, 'files', {
+      value: [new File(['x'], 'kraken photo.png', { type: 'image/png' })],
+      configurable: true,
+    });
+    await act(async () => {
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await flush();
+    await flush();
+
+    const filed = ctx.api.calls.find((call) => call.method === 'put' && call.path.includes('/asset:'));
+    expect(filed?.body).toMatchObject({ name: 'kraken photo', mime: 'image/png' });
+    expect(host.querySelector<HTMLTextAreaElement>('#wiki-body')?.value).toContain('](blob:');
+  });
+
+  it('offers what is already in the library rather than a second upload', async () => {
+    const ctx = ctxFor('the-kraken/edit', {
+      apiResponses: {
+        'data/site/main/index': INDEX,
+        'data/site/main?prefix=asset:&size=100': {
+          items: [{ key: 'asset:abc-123', value: { name: 'The kraken photo', mime: 'image/png' } }],
+        },
+      },
+    });
+    await render(ctx);
+
+    await click('.wiki__upload button:nth-of-type(3)');   // "From the library"
+    await flush();
+    await click('.wiki__pickerlist button');
+
+    expect(host.querySelector<HTMLTextAreaElement>('#wiki-body')?.value)
+      .toContain('![The kraken photo](blob:abc-123)');
+  });
+
+  it('inserts a library image at the size and placement chosen in the box', async () => {
+    // The syntax is now something an author can discover rather than has to know.
+    const ctx = ctxFor('the-kraken/edit', {
+      apiResponses: {
+        'data/site/main/index': INDEX,
+        'data/site/main?prefix=asset:&size=100': {
+          items: [{ key: 'asset:abc-123', value: { name: 'The kraken photo', mime: 'image/png' } }],
+        },
+      },
+    });
+    await render(ctx);
+
+    await click('.wiki__upload button:nth-of-type(3)');
+    await flush();
+    await type('.wiki__imgopts input', '320');
+    await pick('.wiki__imgopts select', 'right');
+    await click('.wiki__pickerlist button');
+
+    expect(host.querySelector<HTMLTextAreaElement>('#wiki-body')?.value)
+      .toContain('![The kraken photo](blob:abc-123){width=320px align=right}');
+  });
+
+  it('defaults to the plain token, so leaving the box alone changes nothing', async () => {
+    const ctx = ctxFor('the-kraken/edit', {
+      apiResponses: {
+        'data/site/main/index': INDEX,
+        'data/site/main?prefix=asset:&size=100': {
+          items: [{ key: 'asset:abc-123', value: { name: 'The kraken photo', mime: 'image/png' } }],
+        },
+      },
+    });
+    await render(ctx);
+
+    await click('.wiki__upload button:nth-of-type(3)');
+    await flush();
+    await click('.wiki__pickerlist button');
+
+    expect(host.querySelector<HTMLTextAreaElement>('#wiki-body')?.value)
+      .toContain('![The kraken photo](blob:abc-123)');
+    expect(host.querySelector<HTMLTextAreaElement>('#wiki-body')?.value).not.toContain('{');
+  });
+
+  it('offers the size box for the image the caret is in, and rewrites that one', async () => {
+    const ctx = ctxFor('the-kraken/edit');
+    await render(ctx);
+    await type('#wiki-body', 'Before.\n\n![A squid](blob:abc)\n\nAfter.');
+
+    const area = host.querySelector<HTMLTextAreaElement>('#wiki-body')!;
+    await act(async () => {
+      area.selectionStart = area.selectionEnd = area.value.indexOf('squid');
+      // keyup, not select: React synthesises onSelect from several events rather than binding the native
+      // one, so a raw `select` event does not reach the handler.
+      area.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true, key: 'ArrowRight' }));
+    });
+
+    expect(host.querySelector('.wiki__caretimg')).not.toBeNull();
+
+    await type('.wiki__caretimg input', '50%');
+
+    const value = host.querySelector<HTMLTextAreaElement>('#wiki-body')!.value;
+    expect(value).toContain('![A squid](blob:abc){width=50%}');
+    expect(value).toContain('Before.');
+    expect(value).toContain('After.');
+  });
+
+  it('replaces the options on a second edit rather than appending another block', async () => {
+    // Typing a width is several edits in a row — "3", "32", "320". Each one has to rewrite the same span,
+    // which means knowing the token's new end synchronously rather than after a repaint.
+    const ctx = ctxFor('the-kraken/edit');
+    await render(ctx);
+    await type('#wiki-body', 'Before.\n\n![A squid](blob:abc)\n\nAfter.');
+
+    const area = host.querySelector<HTMLTextAreaElement>('#wiki-body')!;
+    await act(async () => {
+      area.selectionStart = area.selectionEnd = area.value.indexOf('squid');
+      area.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true, key: 'ArrowRight' }));
+    });
+
+    await type('.wiki__caretimg input', '3');
+    await type('.wiki__caretimg input', '32');
+    await type('.wiki__caretimg input', '320');
+
+    const value = host.querySelector<HTMLTextAreaElement>('#wiki-body')!.value;
+    expect(value).toContain('![A squid](blob:abc){width=320px}');
+    expect(value.match(/\{width/g)).toHaveLength(1);
+  });
+
+  it('keeps the width already on an image, and adds an alignment beside it', async () => {
+    const ctx = ctxFor('the-kraken/edit');
+    await render(ctx);
+    await type('#wiki-body', '![A squid](blob:abc){width=320}');
+
+    const area = host.querySelector<HTMLTextAreaElement>('#wiki-body')!;
+    await act(async () => {
+      area.selectionStart = area.selectionEnd = area.value.indexOf('squid');
+      area.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true, key: 'ArrowRight' }));
+    });
+
+    await pick('.wiki__caretimg select', 'center');
+
+    expect(host.querySelector<HTMLTextAreaElement>('#wiki-body')!.value)
+      .toBe('![A squid](blob:abc){width=320px align=center}');
+  });
+
+  it('shows no size box while the caret is in ordinary prose', async () => {
+    const ctx = ctxFor('the-kraken/edit');
+    await render(ctx);
+    await type('#wiki-body', 'Just prose, no image.');
+
+    const area = host.querySelector<HTMLTextAreaElement>('#wiki-body')!;
+    await act(async () => {
+      area.selectionStart = area.selectionEnd = 4;
+      area.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true, key: 'ArrowRight' }));
+    });
+
+    expect(host.querySelector('.wiki__caretimg')).toBeNull();
+  });
+
   it('says a save is queued instead of claiming it landed', async () => {
     const ctx = ctxFor('the-kraken/edit');
     await render(ctx);

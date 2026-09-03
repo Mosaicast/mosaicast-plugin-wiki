@@ -16,7 +16,36 @@ warned about, and every entry that moves it says so.
 
 ## [Unreleased]
 
-## [0.1.0] — unreleased
+## [0.2.0] — unreleased
+
+Authoring, mostly: the editor stopped asking anyone to memorise syntax. `platformApi` is unchanged at
+**0.12.0**, so this is a drop-in replacement for 0.1.0 on the same host.
+
+### Added
+
+- **Image width and placement**, as an attribute suffix on the existing syntax:
+  `![A squid](blob:<ref>){width=320 align=right}`. `320`/`320px` for pixels, `50%` for a share of the
+  column, `align=left|center|right`. Without it an image fills the column, because most uploads are wider
+  than it — which was the actual complaint behind a request to move the whole page syntax to
+  reStructuredText or LaTeX. Nothing an author types reaches the output: a width is parsed to a number and
+  written back out as one, an alignment must be one of three words, and anything else in the block is
+  dropped.
+- **A media library.** Every upload is filed under a name and can be inserted again from a picker, so the
+  same picture is uploaded once rather than once per page. The name is a label; a page body still carries
+  `blob:<ref>`, because a ref is the file's identity and a name is something someone renames. The orphan
+  sweep counts a library entry as a reference, so a file uploaded and not yet placed on a page survives.
+- **Size and placement without the syntax.** The library picker carries a width and placement box, and
+  putting the cursor in an image already in the body opens the same box for that one — a textarea has no
+  image to right-click, so the token under the cursor is the affordance that works. The defaults produce
+  exactly what writing nothing produced before.
+- **The body and the preview are the same height, scroll together, and stay matched** when the body is
+  resized. The scroll is proportional rather than caret-anchored: mapping a caret offset to the element it
+  became would need the renderer to hand back a source map.
+- **Insert buttons for wiki links and episode citations.** Pages and episodes are chosen from a searchable
+  list by title — an episode slug is not something anyone should have to know — with an optional timestamp
+  on a citation, read with the same grammar the rest of the site uses.
+
+## [0.1.0] — 2026-09-03
 
 First release. `platformApi` **0.12.0** (core 0.6.24 or newer).
 
@@ -78,5 +107,6 @@ a silently broken image link is not.
   MOSAICAST_PLUGINS=Mosaicast/mosaicast-plugin-wiki@v0.1.0#sha256:<digest from the release notes>
   ```
 
-[Unreleased]: https://github.com/Mosaicast/mosaicast-plugin-wiki/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/Mosaicast/mosaicast-plugin-wiki/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/Mosaicast/mosaicast-plugin-wiki/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/Mosaicast/mosaicast-plugin-wiki/releases/tag/v0.1.0

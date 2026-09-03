@@ -20,6 +20,7 @@ import { marked } from 'marked';
  * [[episode:s01e02]]                 an episode link
  * [[episode:s01e02@12:04|the bit]]   an episode link that starts at a moment
  * ![caption](blob:<ref>)             an image this plugin stores itself
+ * ![caption](blob:<ref>){width=320}  …at a width the author chose, optionally {align=left|center|right}
  * ```
  */
 
@@ -55,6 +56,23 @@ export interface RenderedPage {
 
 const WIKI_TOKEN = /\[\[([^\]|]+?)(?:\|([^\]]*))?\]\]/g;
 const BLOB_IMAGE = /!\[([^\]]*)\]\(blob:([A-Za-z0-9-]+)\)/g;
+
+/**
+ * An image carrying a size or alignment: `![caption](target){width=320 align=right}`.
+ *
+ * **Why an attribute suffix and not a different markup language.** Markdown has no way to say how wide an
+ * image should be, and `max-width: 100%` means every upload wider than the column — which is most of them —
+ * renders full width whether or not that was wanted. The alternative on the table was moving the whole page
+ * syntax to reStructuredText or LaTeX, which costs the regex extraction the backend depends on, a migration
+ * of every stored revision, and a second renderer and sanitiser in the browser. This costs one regex.
+ *
+ * The suffix sits after the closing `)`, so `WikiMarkdown`'s own image pattern still matches the image and
+ * simply ignores what follows it — an older backend extracts the media row exactly as before.
+ */
+const IMAGE_WITH_ATTRS = /!\[([^\]]*)\]\(([^)\s]+)\)\{([^}\n]*)\}/g;
+
+/** `width=320`, `width=50%`, `align=right` — anything else in the block is ignored rather than rendered. */
+const IMAGE_ATTR = /(\w+)\s*=\s*([^\s]+)/g;
 // The host's `?t=` grammar (ARCHITECTURE §6.4), matched term for term against core's
 // `frontend/src/util/timestamp.ts` and `web/TimestampParam.java`. This is a THIRD implementation of one
 // grammar, so the spec's rule applies to it too: a link that previews as one moment and plays another is
@@ -67,6 +85,94 @@ const UNITS = /^(?:(\d{1,6})h)?(?:(\d{1,6})m)?(?:(\d{1,6})s)?$/;
 
 /** The largest position a link may carry: 24 h. Longer is a typo, not an episode. */
 const MAX_SECONDS = 86_400;
+
+/**
+ * Reads an image's attribute block into the two things this plugin renders.
+ *
+ * **Nothing the author typed reaches the output.** A width becomes a number and is written back out as one,
+ * an alignment has to be one of three words, and anything else in the block is dropped. That is what makes
+ * emitting a `style` attribute safe here: the value is regenerated, never interpolated, so the sanitiser is
+ * a second line of defence rather than the only one.
+ *
+ * @param raw the text between the braces
+ * @returns a CSS width this code composed, and an alignment class suffix
+ */
+export function parseImageAttrs(raw: string): { width: string | null; align: 'left' | 'center' | 'right' | null } {
+  let width: string | null = null;
+  let align: 'left' | 'center' | 'right' | null = null;
+
+  for (const [, key, value] of raw.matchAll(IMAGE_ATTR)) {
+    if (key === 'width') {
+      const percent = /^(\d{1,3})%$/.exec(value);
+      const pixels = /^(\d{1,4})(?:px)?$/.exec(value);
+      if (percent && Number(percent[1]) > 0 && Number(percent[1]) <= 100) {
+        width = `${Number(percent[1])}%`;
+      } else if (pixels && Number(pixels[1]) > 0) {
+        width = `${Number(pixels[1])}px`;
+      }
+    } else if (key === 'align' && (value === 'left' || value === 'center' || value === 'right')) {
+      align = value;
+    }
+  }
+  return { width, align };
+}
+
+/** What an image token looks like in the body, wherever it sits. */
+const IMAGE_TOKEN = /!\[([^\]]*)\]\(([^)\s]+)\)(\{[^}\n]*\})?/g;
+
+/** One image found in a body, and where it is, so an editor can replace exactly that span. */
+export interface ImageToken {
+  start: number;
+  end: number;
+  alt: string;
+  target: string;
+  width: string | null;
+  align: 'left' | 'center' | 'right' | null;
+}
+
+/**
+ * Finds the image the caret is sitting in or beside.
+ *
+ * **This is what "right-click the image" turns into in a textarea.** There is no image to right-click —
+ * there is text — so the equivalent affordance is acting on the token the caret is already in. A caret
+ * resting anywhere between the `!` and the closing brace counts, which includes the common case of having
+ * just typed or inserted one.
+ *
+ * @param text  the whole body
+ * @param caret the caret offset
+ * @returns the token, or `null` when the caret is not in one
+ */
+export function imageTokenAt(text: string, caret: number): ImageToken | null {
+  IMAGE_TOKEN.lastIndex = 0;
+  for (let m = IMAGE_TOKEN.exec(text); m !== null; m = IMAGE_TOKEN.exec(text)) {
+    const start = m.index;
+    const end = start + m[0].length;
+    if (caret >= start && caret <= end) {
+      const attrs = m[3] ? parseImageAttrs(m[3].slice(1, -1)) : { width: null, align: null };
+      return { start, end, alt: m[1], target: m[2], ...attrs };
+    }
+  }
+  return null;
+}
+
+/**
+ * Writes an image back out, with an attribute block only when there is something to say.
+ *
+ * @param image alt text, target, and the two options
+ * @returns the markdown token
+ */
+export function formatImage(image: {
+  alt: string;
+  target: string;
+  width?: string | null;
+  align?: 'left' | 'center' | 'right' | null;
+}): string {
+  const attrs = [
+    image.width ? `width=${image.width}` : '',
+    image.align ? `align=${image.align}` : '',
+  ].filter(Boolean).join(' ');
+  return `![${image.alt}](${image.target})${attrs ? `{${attrs}}` : ''}`;
+}
 
 /** Escapes text that is about to become part of an HTML attribute or an element's content. */
 function escapeHtml(value: string): string {
@@ -125,7 +231,26 @@ export function formatTimestamp(seconds: number): string {
 
 /** Expands the wiki's own tokens into anchors the parser and the sanitiser both understand. */
 function expandTokens(markdown: string, options: RenderOptions): string {
-  const withImages = markdown.replace(BLOB_IMAGE, (whole, alt: string, ref: string) =>
+  // Sized images first, and as raw HTML: markdown has no syntax for a width, so this is the one construct
+  // that cannot survive as markdown and be styled afterwards. An image whose target this plugin cannot
+  // resolve is dropped exactly as an unsized one is -- a caption without a picture beats a broken icon.
+  const withSized = markdown.replace(IMAGE_WITH_ATTRS, (whole, alt: string, target: string, attrs: string) => {
+    const src = target.startsWith('blob:')
+      ? (options.blobUrl ? options.blobUrl(target.slice('blob:'.length)) : null)
+      : target;
+    if (!src) {
+      return escapeHtml(alt);
+    }
+    const { width, align } = parseImageAttrs(attrs);
+    const style = width ? ` style="width:${width}"` : '';
+    // `wiki__img` makes it a block. An unsized image is inline inside the paragraph marked wraps it in, so
+    // two of them stack; a raw <img> is an HTML *block* to marked and gets no paragraph, so without this
+    // two sized images end up side by side and an author who wrote them on separate lines is surprised.
+    const cls = ` class="wiki__img${align ? ` wiki__img--${align}` : ''}"`;
+    return `<img src="${escapeHtml(src)}" alt="${escapeHtml(alt)}"${style}${cls}>`;
+  });
+
+  const withImages = withSized.replace(BLOB_IMAGE, (whole, alt: string, ref: string) =>
     // No file storage: drop the image rather than emitting a broken one. The caption still reads.
     options.blobUrl ? `![${alt}](${options.blobUrl(ref)})` : escapeHtml(alt),
   );

@@ -134,6 +134,26 @@ class WikiMarkdownTest {
     }
 
     @Test
+    void readsAnImageThatCarriesAWidth() {
+        // The width suffix sits after the closing paren, so the media row is extracted exactly as before —
+        // an older backend would have ignored it too. What must not happen is the suffix leaking into a
+        // caption, a summary or a share preview as literal braces.
+        String body = """
+                ![A squid](blob:abc-123){width=320 align=right}
+
+                Prose after it.
+                """;
+
+        List<WikiMarkdown.Media> media = WikiMarkdown.media(body);
+
+        assertEquals(1, media.size());
+        assertEquals("abc-123", media.get(0).uploadRef());
+        assertEquals("A squid", media.get(0).caption());
+        assertEquals("Prose after it.", WikiMarkdown.excerpt(body, 200),
+                "the attribute block is markup, not prose");
+    }
+
+    @Test
     void buildsAnExcerptFromTheFirstProseParagraph() {
         String excerpt = WikiMarkdown.excerpt("""
                 # The Kraken

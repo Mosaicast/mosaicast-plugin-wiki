@@ -46,6 +46,38 @@ class WikiBlobSweepTest {
     }
 
     @Test
+    void keepsAFileTheMediaLibraryNamesEvenBeforeAnyPageUsesIt() {
+        // The whole point of a library is uploading once and placing later, so a library file has no media
+        // row and no draft naming it. Without this the sweep deleted a podcaster's uploads an hour after
+        // they arrived, and the symptom is a picker full of images that render as nothing.
+        var blobs = new InMemoryPluginBlobs();
+        var stored = upload(blobs, "kraken.png");
+        var ctx = ctx(schema(), blobs, 0);
+        ctx.store().put(Scope.site(), WikiPlugin.ASSET_PREFIX + stored.ref(),
+                Map.of("name", "The kraken photo", "mime", "image/png"));
+
+        new WikiPlugin().register(ctx);
+
+        assertEquals(1, blobs.size(), "a named library entry is a reference");
+        assertTrue(blobs.stat(stored.ref()).isPresent());
+    }
+
+    @Test
+    void collectsAFileOnceItLeavesTheLibraryAndNoPageUsesIt() {
+        var blobs = new InMemoryPluginBlobs();
+        var stored = upload(blobs, "kraken.png");
+        var ctx = ctx(schema(), blobs, 0);
+        ctx.store().put(Scope.site(), WikiPlugin.ASSET_PREFIX + stored.ref(), Map.of("name", "Kept for now"));
+        var plugin = new WikiPlugin();
+        plugin.register(ctx);
+
+        ctx.store().delete(Scope.site(), WikiPlugin.ASSET_PREFIX + stored.ref());
+        plugin.tick();
+
+        assertEquals(0, blobs.size(), "removing it from the library is what makes it an orphan");
+    }
+
+    @Test
     void removesAFileNoPagePointsAt() {
         var blobs = new InMemoryPluginBlobs();
         var orphan = upload(blobs, "forgotten.png");

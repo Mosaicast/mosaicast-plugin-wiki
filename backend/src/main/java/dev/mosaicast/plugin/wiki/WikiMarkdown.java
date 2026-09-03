@@ -234,7 +234,7 @@ final class WikiMarkdown {
         for (String[] rule : new String[][] {
                 {"(?m)^\\s{0,3}#{1,6}\\s+.*$", ""},          // headings carry no prose
                 {"(?s)```.*?```", ""},                        // fenced code
-                {"!\\[[^\\]]*]\\([^)]*\\)", ""},              // images
+                {"!\\[[^\\]]*]\\([^)]*\\)(?:\\{[^}\n]*})?", ""},   // images, with an optional {width=…} suffix
                 // Labelled first, so the label wins; then the unlabelled form falls back to the slug. One
                 // combined pattern cannot express "either group, not both" and emits the slug twice.
                 {"\\[\\[(?:episode:)?[^\\]|@]+(?:@[^\\]|]*)?\\|([^\\]]*)]]", "$1"},

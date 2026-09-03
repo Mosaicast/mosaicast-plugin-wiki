@@ -3,9 +3,19 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from 'react';
 import { isPluginApiError, type PluginContext } from '@mosaicast/plugin-sdk';
-import { renderPage } from '../markdown';
+import { formatImage, formatTimestamp, imageTokenAt, parseImageAttrs, parseTimestamp, renderPage } from '../markdown';
 import { routeHref, routePath, toSlug, type WikiRoute } from '../routes';
-import { deleteKey, draftKey, SITE_PATH, type IngestReceipt, type PageRow, type PageSummary } from '../types';
+import {
+  ASSET_PREFIX,
+  assetKey,
+  deleteKey,
+  draftKey,
+  SITE_PATH,
+  type AssetDoc,
+  type IngestReceipt,
+  type PageRow,
+  type PageSummary,
+} from '../types';
 import type { PluginI18n } from '../i18n';
 import { defaultContentLocale, isMultilingual, localeName } from '../languages';
 import { peekTranslation, stashTranslation, translatePage, type TranslationDraft } from '../translate';
@@ -13,6 +23,9 @@ import { Icon } from '../icons';
 import { describeApiError } from './useDoc';
 
 /** How often to re-read the ingest receipt while a save is queued. */
+/** How many rows a picker shows before searching is the better move than scrolling. */
+const PICKER_LIMIT = 40;
+
 const POLL_MS = 2_000;
 
 /** How long to keep polling before saying so. The backend tick is configurable, so this is generous. */
@@ -80,9 +93,11 @@ export function EditorView({ ctx, i18n, slug, index, go }: EditorViewProps) {
 
   const [save, setSave] = useState<SaveState>({ phase: 'idle' });
   const [upload, setUpload] = useState<{ busy: boolean; error: string | null }>({ busy: false, error: null });
+  const [picker, setPicker] = useState<'page' | 'episode' | 'library' | null>(null);
   const [quota, setQuota] = useState<{ usedBytes: number; quotaBytes: number; maxFileBytes: number } | null>(null);
   const [vocabulary, setVocabulary] = useState<{ tag: string; label: string }[]>([]);
   const bodyRef = useRef<HTMLTextAreaElement>(null);
+  const previewRef = useRef<HTMLDivElement>(null);
   const pollRef = useRef<number | null>(null);
 
   const targetSlug = isNew ? newSlug : slug;
@@ -203,6 +218,102 @@ export function EditorView({ ctx, i18n, slug, index, go }: EditorViewProps) {
     [ctx, markdown, index],
   );
 
+  // The image the caret is in, if any. **A textarea has no image to right-click** — it has text — so the
+  // affordance that does work is acting on the token the caret is already inside. Tracked on every
+  // interaction with the body rather than polled, so the button appears the moment the caret lands in one.
+  const [caretImage, setCaretImage] = useState<ReturnType<typeof imageTokenAt>>(null);
+  // The width box keeps what was typed, not what was parsed. Feeding the parsed value back would turn "32"
+  // into "32px" between two keystrokes and the next character would land after the unit.
+  const [caretWidthText, setCaretWidthText] = useState('');
+  const caretImageStart = useRef<number | null>(null);
+
+  const trackCaret = useCallback(() => {
+    const area = bodyRef.current;
+    const found = area ? imageTokenAt(area.value, area.selectionStart ?? 0) : null;
+    setCaretImage(found);
+    // Reload the box only when the caret moved to a *different* image, or it would overwrite what is
+    // being typed into it on every keystroke.
+    if ((found?.start ?? null) !== caretImageStart.current) {
+      caretImageStart.current = found?.start ?? null;
+      setCaretWidthText(found?.width ?? '');
+    }
+  }, []);
+
+  /** Rewrites the image under the caret with new options, leaving its alt text and target alone. */
+  const applyToCaretImage = (next: { width: string | null; align: '' | 'left' | 'center' | 'right' }) => {
+    const area = bodyRef.current;
+    if (!area || !caretImage) {
+      return;
+    }
+    const replacement = formatImage({
+      alt: caretImage.alt,
+      target: caretImage.target,
+      width: next.width,
+      align: next.align || null,
+    });
+    const value = area.value.slice(0, caretImage.start) + replacement + area.value.slice(caretImage.end);
+    setMarkdown(value);
+    // The token's new span is known right here, so record it **synchronously**. Deriving it inside the
+    // rAF below made the next edit slice against a stale `end` and append a second attribute block
+    // instead of replacing the first — and typing a width is several edits in a row. rAF is also
+    // throttled in a backgrounded tab, which makes it the wrong place for anything correctness needs.
+    setCaretImage({
+      ...caretImage,
+      end: caretImage.start + replacement.length,
+      width: next.width,
+      align: next.align || null,
+    });
+    // Cosmetic, and only cosmetic: put the caret back inside the token so the box stays open under the
+    // hand using it. `caretImageStart` is left alone — it is still the same image.
+    requestAnimationFrame(() => {
+      area.focus();
+      area.selectionStart = area.selectionEnd = caretImage.start + replacement.length;
+    });
+  };
+
+  /**
+   * Keeps the preview beside the body: the same height, and scrolled to the same place.
+   *
+   * Two halves. The **height** is mirrored because the textarea is user-resizable — a fixed height in CSS
+   * gives them the same height until someone drags the handle, and then they never match again. The
+   * **scroll** is proportional rather than caret-anchored: mapping a caret offset to the element it became
+   * would mean the renderer handing back a source map, and a ratio is right wherever the two halves have
+   * roughly the same shape, which for a wiki page they do. The browser scrolls the textarea to follow the
+   * caret on its own, so typing near the bottom pulls the preview along without a keystroke listener.
+   *
+   * One direction only, editor to preview. Syncing both ways means each one's programmatic scroll wakes
+   * the other's handler, and the two fight over the last pixel.
+   */
+  useEffect(() => {
+    const area = bodyRef.current;
+    const pane = previewRef.current;
+    if (!area || !pane) {
+      return;
+    }
+    const syncScroll = () => {
+      const room = area.scrollHeight - area.clientHeight;
+      const previewRoom = pane.scrollHeight - pane.clientHeight;
+      // Nothing to scroll on either side is the normal state of a short page, not an error.
+      if (room <= 0 || previewRoom <= 0) {
+        return;
+      }
+      pane.scrollTop = (area.scrollTop / room) * previewRoom;
+    };
+    const mirrorHeight = () => {
+      pane.style.height = `${area.getBoundingClientRect().height}px`;
+    };
+    area.addEventListener('scroll', syncScroll, { passive: true });
+    // Guarded rather than assumed: every browser this ships to has it, but a missing global thrown from a
+    // render is what the host's error boundary turns into a blank tile, and the editor still works without
+    // the mirror -- the two panes simply stop matching after a manual resize.
+    const resize = typeof ResizeObserver === 'function' ? new ResizeObserver(mirrorHeight) : null;
+    resize?.observe(area);
+    return () => {
+      area.removeEventListener('scroll', syncScroll);
+      resize?.disconnect();
+    };
+  }, [loaded]);
+
   /** Inserts text at the caret, so an upload lands where the author was typing. */
   const insertAtCaret = useCallback((snippet: string) => {
     const area = bodyRef.current;
@@ -228,9 +339,23 @@ export function EditorView({ ctx, i18n, slug, index, go }: EditorViewProps) {
     setUpload({ busy: true, error: null });
     try {
       const stored = await ctx.blobs.upload(file);
+      const name = file.name.replace(/[[\]]/g, '').replace(/\.[^.]+$/, '');
       // The ref is the identity; the URL is derived at render time. Writing a URL into the body would be
       // a copy of a decision the host is entitled to change.
-      insertAtCaret(`![${file.name.replace(/[[\]]/g, '')}](blob:${stored.ref})`);
+      insertAtCaret(`![${name}](blob:${stored.ref})`);
+      // File it in the library on the way past, so the same picture never has to be uploaded twice. This
+      // is also what keeps it alive: the backend's sweep counts a ref named here as referenced, so a file
+      // uploaded and not yet placed survives the grace period.
+      await ctx.api
+        .put(`${SITE_PATH}/${assetKey(stored.ref)}`, {
+          name,
+          mime: stored.mime,
+          addedBy: ctx.user?.id ?? null,
+          at: new Date().toISOString(),
+        } satisfies AssetDoc)
+        // Narrow on purpose: the image is already uploaded and already in the body. Losing the library
+        // entry costs findability later, and must not be reported as a failed upload now.
+        .catch((error: unknown) => ctx.log('warn', `wiki: file not added to the library: ${describeApiError(error)}`));
       setUpload({ busy: false, error: null });
       ctx.blobs.quota().then(setQuota).catch(() => undefined);
     } catch (error: unknown) {
@@ -605,38 +730,118 @@ export function EditorView({ ctx, i18n, slug, index, go }: EditorViewProps) {
             ref={bodyRef}
             className="wiki__area"
             value={markdown}
-            onChange={(event) => setMarkdown(event.target.value)}
+            onChange={(event) => {
+              setMarkdown(event.target.value);
+              trackCaret();
+            }}
+            onKeyUp={trackCaret}
+            onClick={trackCaret}
+            onSelect={trackCaret}
             rows={20}
             spellCheck
           />
           <p className="wiki__hint">{i18n.t('editor.syntaxHint')}</p>
 
-          {ctx.blobs && (
-            <div className="wiki__upload">
+          <div className="wiki__upload">
+            {/* Buttons rather than syntax to memorise: a page slug is guessable, an episode slug is not. */}
+            <button
+              type="button"
+              className="wiki__btn wiki__btn--ghost"
+              onClick={() => setPicker(picker === 'page' ? null : 'page')}
+            >
+              <Icon name="link" />
+              {i18n.t('editor.insertPage')}
+            </button>
+            <button
+              type="button"
+              className="wiki__btn wiki__btn--ghost"
+              onClick={() => setPicker(picker === 'episode' ? null : 'episode')}
+            >
+              <Icon name="music" />
+              {i18n.t('editor.insertEpisode')}
+            </button>
+            {ctx.blobs && (
+              <button
+                type="button"
+                className="wiki__btn wiki__btn--ghost"
+                onClick={() => setPicker(picker === 'library' ? null : 'library')}
+              >
+                <Icon name="image" />
+                {i18n.t('editor.insertLibrary')}
+              </button>
+            )}
+            {ctx.blobs && (
               <label className="wiki__btn wiki__btn--ghost">
                 <Icon name="upload" />
                 {upload.busy ? i18n.t('editor.uploading') : i18n.t('editor.addImage')}
                 <input type="file" accept="image/*" hidden onChange={onPickFile} disabled={upload.busy} />
               </label>
-              {quota && (
-                <span className="wiki__hint">
-                  {i18n.t('editor.quota', {
-                    used: i18n.bytes(quota.usedBytes),
-                    total: i18n.bytes(quota.quotaBytes),
-                    max: i18n.bytes(quota.maxFileBytes),
-                  })}
-                </span>
-              )}
-              {upload.error && <p className="wiki__error">{upload.error}</p>}
+            )}
+          </div>
+
+          {caretImage && (
+            <div className="wiki__caretimg">
+              <p className="wiki__hint">{i18n.t('editor.image.atCaret', { alt: caretImage.alt || '—' })}</p>
+              <ImageOptions
+                i18n={i18n}
+                width={caretWidthText}
+                align={caretImage.align ?? ''}
+                onWidth={(value) => {
+                  setCaretWidthText(value);
+                  const parsed = value.trim() === '' ? null : parseImageAttrs(`width=${value.trim()}`).width;
+                  // A half-typed width ("32" on the way to "320") parses; nonsense does not, and rewriting
+                  // the token with it would silently drop the width the author is still typing.
+                  if (value.trim() === '' || parsed !== null) {
+                    applyToCaretImage({ width: parsed, align: caretImage.align ?? '' });
+                  }
+                }}
+                onAlign={(value) =>
+                  applyToCaretImage({
+                    width: caretWidthText.trim() === ''
+                      ? null
+                      : parseImageAttrs(`width=${caretWidthText.trim()}`).width,
+                    align: value,
+                  })
+                }
+              />
             </div>
           )}
+
+          {picker && (
+            <InsertPicker
+              kind={picker}
+              ctx={ctx}
+              i18n={i18n}
+              index={index}
+              onInsert={(snippet) => {
+                insertAtCaret(snippet);
+                setPicker(null);
+              }}
+              onClose={() => setPicker(null)}
+            />
+          )}
+
+          {quota && (
+            <p className="wiki__hint">
+              {i18n.t('editor.quota', {
+                used: i18n.bytes(quota.usedBytes),
+                total: i18n.bytes(quota.quotaBytes),
+                max: i18n.bytes(quota.maxFileBytes),
+              })}
+            </p>
+          )}
+          {upload.error && <p className="wiki__error">{upload.error}</p>}
         </div>
 
         <div className="wiki__field">
           <span className="wiki__label">{i18n.t('editor.preview')}</span>
           {/* Sanitised in renderPage, exactly as the reader does it — a preview must not be the one place
               author markup reaches the DOM unfiltered. */}
-          <div className="wiki__body wiki__preview" dangerouslySetInnerHTML={{ __html: preview.html }} />
+          <div
+            ref={previewRef}
+            className="wiki__body wiki__preview"
+            dangerouslySetInnerHTML={{ __html: preview.html }}
+          />
         </div>
       </div>
 
@@ -743,4 +948,223 @@ function SaveStatus({
         </p>
       );
   }
+}
+
+/**
+ * Size and placement for an image, without anyone having to know the syntax.
+ *
+ * The defaults are the behaviour you get by writing nothing — full column width, no float — so leaving the
+ * box alone produces exactly the token the plugin produced before this existed.
+ */
+function ImageOptions({
+  i18n,
+  width,
+  align,
+  onWidth,
+  onAlign,
+}: {
+  i18n: PluginI18n;
+  width: string;
+  align: '' | 'left' | 'center' | 'right';
+  onWidth(value: string): void;
+  onAlign(value: '' | 'left' | 'center' | 'right'): void;
+}) {
+  // Shown as you type rather than on submit: the field is three characters long and a wrong one silently
+  // producing a full-width image is the confusion this whole control exists to remove.
+  const bad = width.trim() !== '' && parseImageAttrs(`width=${width.trim()}`).width === null;
+
+  return (
+    <div className="wiki__imgopts">
+      <label>
+        {i18n.t('editor.image.width')}
+        <input
+          className="wiki__input"
+          value={width}
+          placeholder={i18n.t('editor.image.widthHint')}
+          onChange={(event) => onWidth(event.target.value)}
+        />
+      </label>
+      <label>
+        {i18n.t('editor.image.align')}
+        <select
+          className="wiki__input"
+          value={align}
+          onChange={(event) => onAlign(event.target.value as '' | 'left' | 'center' | 'right')}
+        >
+          <option value="">{i18n.t('editor.image.alignDefault')}</option>
+          <option value="left">{i18n.t('editor.image.alignLeft')}</option>
+          <option value="center">{i18n.t('editor.image.alignCenter')}</option>
+          <option value="right">{i18n.t('editor.image.alignRight')}</option>
+        </select>
+      </label>
+      {bad && <p className="wiki__error">{i18n.t('editor.image.badWidth')}</p>}
+    </div>
+  );
+}
+
+/**
+ * The insert pickers: a page, an episode, or a file already in the library.
+ *
+ * **A slug is not something to know by heart.** `[[the-kraken]]` and `[[episode:s01e02@12:04]]` are terse to
+ * read and unguessable to write — an author has to remember an episode's slug, and there is no reason they
+ * would. The host hands over `ctx.episodes` (access-filtered) and `ctx.episodeLabels`, and the SDK says in
+ * as many words to use them in pickers so people see titles; the page list is the `index` projection the
+ * editor already holds.
+ */
+function InsertPicker({
+  kind,
+  ctx,
+  i18n,
+  index,
+  onInsert,
+  onClose,
+}: {
+  kind: 'page' | 'episode' | 'library';
+  ctx: PluginContext;
+  i18n: PluginI18n;
+  index: Record<string, PageSummary>;
+  onInsert(snippet: string): void;
+  onClose(): void;
+}) {
+  const [query, setQuery] = useState('');
+  const [stamp, setStamp] = useState('');
+  const [width, setWidth] = useState('');
+  const [align, setAlign] = useState<'' | 'left' | 'center' | 'right'>('');
+  const [library, setLibrary] = useState<{ ref: string; name: string; mime: string }[]>([]);
+
+  useEffect(() => {
+    if (kind !== 'library') {
+      return;
+    }
+    let cancelled = false;
+    ctx.api
+      .get<{ items: { key: string; value: AssetDoc }[] }>(`${SITE_PATH}?prefix=${ASSET_PREFIX}&size=100`)
+      .then((page) => {
+        if (!cancelled) {
+          setLibrary(
+            page.items.map((entry) => ({
+              ref: entry.key.slice(ASSET_PREFIX.length),
+              name: entry.value?.name ?? entry.key.slice(ASSET_PREFIX.length),
+              mime: entry.value?.mime ?? '',
+            })),
+          );
+        }
+      })
+      // Swallowed narrowly: an empty library still leaves upload working, which is the way in anyway.
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [ctx, kind]);
+
+  const needle = query.trim().toLowerCase();
+  const matches = (text: string) => !needle || text.toLowerCase().includes(needle);
+
+  // `parseTimestamp` is the shared `?t=` grammar, not a fifth implementation of it. An unreadable value is
+  // dropped rather than guessed, which is why the field says so instead of refusing to submit.
+  const seconds = stamp.trim() ? parseTimestamp(stamp.trim()) : undefined;
+  const stampBad = stamp.trim() !== '' && seconds === undefined;
+
+  const pages = Object.entries(index)
+    .filter(([slug, summary]) => matches(summary.title || slug) || matches(slug))
+    .sort(([, a], [, b]) => (a.title || '').localeCompare(b.title || ''))
+    .slice(0, PICKER_LIMIT);
+
+  const episodes = ctx.episodes
+    .map((slug) => ({ slug, label: ctx.episodeLabels?.[slug] ?? slug }))
+    .filter((episode) => matches(episode.label) || matches(episode.slug))
+    .slice(0, PICKER_LIMIT);
+
+  const files = library.filter((file) => matches(file.name)).slice(0, PICKER_LIMIT);
+
+  return (
+    <div className="wiki__picker">
+      <div className="wiki__pickerbar">
+        <input
+          className="wiki__input"
+          type="search"
+          autoFocus
+          value={query}
+          placeholder={i18n.t(`editor.pick.${kind}`)}
+          aria-label={i18n.t(`editor.pick.${kind}`)}
+          onChange={(event) => setQuery(event.target.value)}
+        />
+        {kind === 'episode' && (
+          <input
+            className="wiki__input wiki__stamp"
+            value={stamp}
+            placeholder={i18n.t('editor.pick.at')}
+            aria-label={i18n.t('editor.pick.at')}
+            onChange={(event) => setStamp(event.target.value)}
+          />
+        )}
+        <button type="button" className="wiki__btn wiki__btn--ghost" onClick={onClose}>
+          {i18n.t('editor.pick.close')}
+        </button>
+      </div>
+      {stampBad && <p className="wiki__error">{i18n.t('editor.pick.badStamp')}</p>}
+      {kind === 'library' && (
+        <ImageOptions i18n={i18n} width={width} align={align} onWidth={setWidth} onAlign={setAlign} />
+      )}
+
+      <ul className="wiki__pickerlist">
+        {kind === 'page' &&
+          pages.map(([slug, summary]) => (
+            <li key={slug}>
+              <button type="button" onClick={() => onInsert(`[[${slug}|${summary.title || slug}]]`)}>
+                <span>{summary.title || slug}</span>
+                <code>{slug}</code>
+              </button>
+            </li>
+          ))}
+
+        {kind === 'episode' &&
+          episodes.map((episode) => (
+            <li key={episode.slug}>
+              <button
+                type="button"
+                onClick={() =>
+                  onInsert(
+                    `[[episode:${episode.slug}${seconds === undefined ? '' : `@${formatTimestamp(seconds)}`}|${episode.label}]]`,
+                  )
+                }
+              >
+                <span>{episode.label}</span>
+                <code>{episode.slug}</code>
+              </button>
+            </li>
+          ))}
+
+        {kind === 'library' &&
+          files.map((file) => (
+            <li key={file.ref}>
+              <button
+                type="button"
+                onClick={() =>
+                  onInsert(
+                    formatImage({
+                      alt: file.name,
+                      target: `blob:${file.ref}`,
+                      width: parseImageAttrs(`width=${width.trim()}`).width,
+                      align: align || null,
+                    }),
+                  )
+                }
+              >
+                {ctx.blobs && file.mime.startsWith('image/') && (
+                  <img className="wiki__thumb" src={ctx.blobs.urlFor(file.ref)} alt="" />
+                )}
+                <span>{file.name}</span>
+              </button>
+            </li>
+          ))}
+      </ul>
+
+      {((kind === 'page' && pages.length === 0) ||
+        (kind === 'episode' && episodes.length === 0) ||
+        (kind === 'library' && files.length === 0)) && (
+        <p className="wiki__hint">{i18n.t(`editor.pick.none.${kind}`)}</p>
+      )}
+    </div>
+  );
 }

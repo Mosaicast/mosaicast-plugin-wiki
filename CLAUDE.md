@@ -16,27 +16,22 @@ working tree or `mosaicast-plugin-sample`, the latter win.
   string in all four places — `plugin.json`, both gradle coordinates, `package.json` — and **none of them is
   a literal in a test**: `manifest.test.ts` compares against the SDK's own `PLATFORM_API_VERSION`, `ci.yml`
   compares the manifest against both gradle coordinates.
-- Its `site / main` slot **renders nowhere** (`main` is the episode page body) and so does `placement:
-  "admin"`, though both validate — hence `placement: "page"` + `"site"`, and tooling at `/p/wiki/_admin`.
-- It has no `data` block, and an absent `readableBy` defaults to the **write** floor — anonymous reads would
-  403, against its own DoD. Declared explicitly. Consent, if it ever returns, is `consent.services[]`.
+- Its `site / main` slot **renders nowhere** (`main` is the episode page body), and so does
+  `placement: "admin"` — both validate. Hence `page` + `site`, and tooling at `/p/wiki/_admin`.
+- No `data` block, and an absent `readableBy` defaults to the **write** floor: anonymous reads would 403,
+  against its own DoD. Declared explicitly.
 - It predates languages: §30's "page content is author data" holds; `page.locale` only makes it readable.
 
 ### Platform surfaces this plugin depends on
-Every gap this repo filed is **closed**: file storage and timestamped episode links (core#81/#82, SDK 0.8.0),
-real 404s for unknown subpaths ([core#89], core 0.6.22), and per-page language on both SEO surfaces
-(SDK 0.12.0 / core 0.6.24). Filing one works — prefer it to a workaround.
-The generic contract — blobs, icons, `nav`'s `visibleTo`, credit fields, the two locale lists, the two ways
-`ctx.translation` is `null` — is in the **writing-a-mosaicast-plugin** skill and not repeated here. What is
-particular to this repo:
-- **`ctx.blobs` orphans are ours to collect.** Nothing else does: the ingest tick deletes every uploaded file
-  the wiki stops pointing at, so a ref that leaves the last page body loses its bytes after the grace period.
-- **`ctx.links.episode(slug, { t })` / `.feed(slug, …)`** — never hardcode `/episodes/…` or `/feeds/…`.
-  Core ships its **own share dialog** since 0.6.12 — do not build a second.
-- **The `?t=` grammar is shared** (§6.4). `WikiMarkdown.seconds` and `markdown.ts#parseTimestamp` are the
-  *third and fourth* implementations of core's `util/timestamp.ts` / `web/TimestampParam.java`, same case
-  table (`754`, `12:04`, `1:02:03`, `1h02m03s`, `90m`; bounded fields, 24 h cap, unreadable values dropped).
-  A link that previews as one moment and plays another is worse than one with none — change all four or none.
+Every gap this repo filed is **closed** (core#81/#82, [core#89], SDK 0.12.0) — filing one works, prefer it to
+a workaround. The generic contract is in the **writing-a-mosaicast-plugin** skill and not repeated here;
+what is particular to this repo:
+- **`ctx.blobs` orphans are ours to collect** — the tick deletes every file nothing points at (a body, an
+  unapplied draft, a library entry). **`ctx.links.episode(slug, { t })` / `.feed(…)`** — never hardcode
+  `/episodes/…`. Core has shipped its **own share dialog** since 0.6.12; do not build a second.
+- **The `?t=` grammar is shared** (§6.4): `WikiMarkdown.seconds` and `markdown.ts#parseTimestamp` are the
+  *third and fourth* implementations of core's, same case table (`754`, `12:04`, `1:02:03`, `1h02m03s`,
+  `90m`; bounded fields, 24 h cap, unreadable dropped). Change all four together or none.
 - **No request-time backend hook** (§7.6) — hence the draft/ingest write path, and why every invariant lives
   in `ingestOne`. **Unknown subpaths are a real 404**: `hasRoute` answers, and **the empty subpath is our own
   root** — a lookup over slugs alone 404s the landing page.
@@ -67,10 +62,9 @@ cd ../mosaicast-core && dev/instance.sh up --plugins --admin  # :8081, fleeting 
 #   dev-login: POST /api/auth/dev-login?role=podcaster|fan|admin (prime /api/meta, send X-XSRF-TOKEN)
 dev/instance.sh status | logs [-f] | psql | down
 ```
-`instance.sh` replaced the old `screenshots.sh` and needs `--plugins` (the default loads none). Disposable
-and seeded only with the fictional sample feed, so writing and deleting wiki data there is free. Core loads
-plugins **at startup only**: a rebuilt backend needs a restart, a rebuilt bundle does not. Capture light and
-dark at 375×667, 768×1024, 1280×800 into `assets/screenshots/`; put them in the PR.
+`instance.sh` replaced `screenshots.sh` and needs `--plugins`. Disposable, seeded only with the sample
+feed. Core loads plugins **at startup only**: a rebuilt backend needs a restart, a rebuilt bundle does not.
+Capture light and dark at 375×667, 768×1024, 1280×800 into `assets/screenshots/` for the PR.
 
 **Six ways this loop lies to you, all seen in practice:**
 1. **`up` accepts a stale instance.** Its health check answers from an app already running, so a rebuilt
@@ -96,9 +90,9 @@ German is a content language on a fresh install (**Admin → Languages** changes
 whole language UI is correctly invisible.
 
 ## npm lockfile gotcha (recurs on every dependency bump)
-npm 11.16.0 records esbuild's 27 optional platform binaries as `extraneous`, so `npm ci` tries to install
-netbsd-arm64 on an x64 runner and fails with EBADPLATFORM. npm 10 omits the entries entirely, which npm 11
-then rejects as out of sync. After any dependency change, regenerate and correct:
+npm 11 records esbuild's 27 optional platform binaries as `extraneous`, so `npm ci` tries to install
+netbsd-arm64 on an x64 runner and fails EBADPLATFORM; npm 10 omits them, which npm 11 rejects as out of
+sync. After any dependency change:
 ```
 rm -rf node_modules package-lock.json && npm install --ignore-scripts
 # then rewrite each `"extraneous": true` to `"dev": true, "optional": true`
@@ -117,11 +111,10 @@ projection, which holds published pages only, so a draft translation is unlistab
 rather than by a filter someone could forget. Prefer that shape when adding a view.
 
 ## The front page and the lead
-The front page is an ordinary wiki page: `homePageSlug` (config, default `main-page`) names it, the backend
-publishes its body to the `home` doc key, and the home view renders that above the generated sections — so it
-gets the editor, revisions, history, search and backlinks for nothing. **Publish nothing as an absent key,
-never a null**: the doc store refuses a null value, so storing "no front page" that way throws on every tick
-of a new install.
+The front page is an ordinary wiki page — `homePageSlug` names it, the backend publishes its body to the
+`home` doc key, and the home view renders that above the generated sections, so it gets the editor,
+revisions, history, search and backlinks for nothing. **Publish nothing as an absent key, never a null**:
+the doc store refuses a null, so storing "no front page" that way throws on every tick of a new install.
 
 `page.summary` is auto-derived from the first paragraph when an author gives none, so the reader shows a lead
 only when summary and first paragraph differ — otherwise it prints that paragraph twice.
@@ -149,6 +142,7 @@ swallowed by the mount React throws away. `WikiPage` clears it when the route le
 [[the-kraken]]  [[the-kraken|label]]        wiki link; unresolved -> red link
 [[episode:s01e02]]  [[episode:s01e02@12:04|label]]   episode link via ctx.links.episode(slug,{t})
 ![caption](blob:<ref>)                      an uploaded file, addressed by ref
+![caption](blob:<ref>){width=320 align=right}   …sized; width in px or %, align left|center|right
 ## Sources / ## Quellen / ...               extracted to `source` rows and rendered from those
 ```
 The Sources vocabulary is the **`sourceHeadings` config field** (default `sources,quellen`) — a per-language
@@ -156,6 +150,23 @@ table only helps languages somebody thought to add. The backend records the head
 `page.sourcesHeading` and the reader strips *that* section, so the browser holds no copy of the list to fall
 out of step. Configured headings are `Pattern.quote`d / escaped on both sides: the value comes from a form a
 podcaster types into.
+
+The `{…}` suffix is markdown's missing image width, taken over moving the syntax to rST or LaTeX. **Nothing
+the author typed reaches the output** — a width is parsed to a number and written back out as one, an
+alignment must be one of three words, the rest is dropped — which is what makes emitting a `style` attribute
+safe. It sits after the `)`, so the backend's image pattern ignores it.
+
+The editor never asks anyone to remember `{…}`: the library picker carries a width/placement box, and the
+caret sitting in an image opens the same box for it — a textarea has no image to right-click, so the token
+under the caret is the affordance that works. **Record the token's new span synchronously**; deriving it in
+the `requestAnimationFrame` that repositions the caret made a second edit slice against a stale end and
+append a block instead of replacing one, and rAF is throttled in a background tab.
+
+The **pickers** are why nobody types a slug: pages from `index`, episodes from `ctx.episodes` +
+`ctx.episodeLabels`, timestamps through `parseTimestamp`. Every upload is filed in the **media library** as
+a client-written `asset:<ref>` doc; the body still says `blob:<ref>`, because a ref is identity and a name
+is a label. **That entry is what keeps the file alive** — the only reference between uploading and placing,
+so without it the orphan sweep deletes the upload an hour later.
 
 `WikiMarkdown` (backend) finds these with **regexes, not a parser** — a real parser would mean a shaded JAR
 and PF4J classloading. The browser parses properly for rendering; anything the backend misses degrades to a
@@ -165,28 +176,25 @@ missing backlink, never a broken page.
 `schema` is the read model (`plugin_wiki_*`, read-only from the frontend via `ctx.schema`); the doc store is
 the write channel — the editor writes `draft:<slug>` and the backend ingests on its schedule. **Saves are
 eventually consistent**: surface that in the UI, never paper over it. Backend-owned keys (`index`, `home`,
-`wikistats`, `ingest:*`) are written in `register()` **and** on the tick. Never reserve `draft:*`/`delete:*` —
-the client writes those and reserving them would 403 the editor.
+`wikistats`, `ingest:*`) are written in `register()` **and** on the tick. Never reserve
+`draft:*`/`delete:*`/`asset:*` — the client writes those and reserving them would 403 the editor.
 
 ## Releasing
-Three files carry the plugin's own version; `scripts/set-version.sh` bumps all three and `ci.yml` fails if
+`scripts/set-version.sh` bumps the plugin's own version in all three files that carry it; `ci.yml` fails if
 they disagree. `release.yml` refuses a tag disagreeing with the manifest, attaches `plugin.tgz` (**the asset
-name is load-bearing** — `install-plugin.sh` resolves it by URL) and appends the SHA-256 an operator pins.
-`CHANGELOG.md` is the record; the `releasing-a-mosaicast-plugin` skill has the order.
+name is load-bearing**) and appends the SHA-256 an operator pins. `CHANGELOG.md` is the record; the
+`releasing-a-mosaicast-plugin` skill has the order.
 
 ## Conventions (binding)
-- Java packages `dev.mosaicast.*`; npm scope `@mosaicast`. Import ONLY against the SDK, never core.
-- Never commit secrets; configure via `.env` / environment variables. Migrations exclusively via Flyway.
-- **Tests are part of the work** (BRIEF DoD, §13.5) and CI must be green. **Document public APIs**
-  (Javadoc/TSDoc), taking SDK signatures from the built SDK docs rather than guessing (§3.5).
-- **Sign off commits** (`git commit -s`, DCO) and put an **SPDX header in every new source file**:
-  `SPDX-License-Identifier: AGPL-3.0-or-later` + `SPDX-FileCopyrightText: 2026 The Mosaicast Authors`.
-  Don't guess the holder from git config — use that fixed value. CI blocks PRs without a header.
+Java packages `dev.mosaicast.*`, npm scope `@mosaicast`, and imports **only** against the SDK. Tests are
+part of the work and CI must be green; document public APIs from the built SDK docs rather than guessing.
+No secrets in the repo. **Sign off commits** (`git commit -s`) and put an **SPDX header in every new source
+file** — `AGPL-3.0-or-later` + `2026 The Mosaicast Authors`, that fixed holder and not your git config. CI
+blocks a PR without either.
 
-## Architecture guardrails (do not violate)
-Identity (`EpisodeRef`) is separate from presentation (the feed snapshot) — runtime and date come from the
-feed, and plugin metrics are non-authoritative. The host resolves scopes and decides access and filters;
-plugins only consume. The doc store is the default; schema tables are platform-mediated only.
+Guardrails: identity (`EpisodeRef`) is separate from presentation (the feed snapshot), so runtime and date
+come from the feed and plugin metrics are non-authoritative. The host resolves scopes and decides access;
+plugins only consume. The doc store is the default, schema tables platform-mediated only.
 
 ## Keep docs current, and when unsure
 **README.md**, **BACKLOG.md** and this file are repo-local and yours to maintain; **ARCHITECTURE.md and
