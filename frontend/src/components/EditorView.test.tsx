@@ -4,9 +4,17 @@
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { makeMockBlobs, makeMockCtx, makeMockSchema, type MockSchemaClient } from '@mosaicast/plugin-sdk/testing';
+import {
+  apiError,
+  makeMockBlobs,
+  makeMockCtx,
+  makeMockSchema,
+  makeMockTranslation,
+  type MockSchemaClient,
+} from '@mosaicast/plugin-sdk/testing';
 import { WikiPage } from './WikiPage';
 import { flush } from '../test-utils';
+import { clearTranslation, peekTranslation } from '../translate';
 
 const KRAKEN = {
   id: 1,
@@ -60,6 +68,36 @@ describe('<EditorView>', () => {
     });
     await flush();
     await flush();
+  };
+
+  /** A site that authors in English and German — the smallest multilingual case. */
+  const bilingual = () => ({
+    current: () => 'en',
+    onChange: () => () => {},
+    available: () => [
+      { code: 'en', nativeName: 'English', isDefault: true },
+      { code: 'de', nativeName: 'Deutsch', isDefault: false },
+    ],
+    content: () => [
+      { code: 'en', nativeName: 'English', isDefault: true },
+      { code: 'de', nativeName: 'Deutsch', isDefault: false },
+    ],
+  });
+
+  const click = async (selector: string) => {
+    const button = host.querySelector<HTMLButtonElement>(selector)!;
+    await act(async () => {
+      button.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    await flush();
+  };
+
+  const pick = async (selector: string, value: string) => {
+    const field = host.querySelector<HTMLSelectElement>(selector)!;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')!.set!.call(field, value);
+      field.dispatchEvent(new Event('change', { bubbles: true }));
+    });
   };
 
   const type = async (selector: string, value: string) => {
@@ -120,6 +158,152 @@ describe('<EditorView>', () => {
       tags: ['lore', 'sea'],
       baseRevisionNo: 3,
     });
+  });
+
+  it('offers no language controls on a site that authors in one language', async () => {
+    // A picker with one option and a "translation of" box nothing can answer. Both would be clutter on
+    // every wiki that is not multilingual, which is most of them.
+    const ctx = ctxFor('the-kraken/edit');
+
+    await render(ctx);
+
+    expect(host.querySelector('#wiki-locale')).toBeNull();
+    expect(host.querySelector('#wiki-translation-of')).toBeNull();
+  });
+
+  it('carries the language and the original into the draft the backend validates', async () => {
+    const ctx = ctxFor('the-kraken/edit', { locale: bilingual() });
+    await render(ctx);
+
+    await pick('#wiki-locale', 'de');
+    await submit();
+
+    expect(ctx.api.calls.find((call) => call.method === 'put')?.body).toMatchObject({
+      locale: 'de',
+      translationOf: null,
+    });
+  });
+
+  it('builds the picker from the content languages, not the ones the shell renders in', async () => {
+    // The two lists come apart on exactly this: an admin permits authoring in a language the UI does not
+    // offer. Building the editor from `available()` would refuse the language the operator asked for.
+    const ctx = ctxFor('the-kraken/edit', {
+      locale: {
+        current: () => 'en',
+        onChange: () => () => {},
+        available: () => [{ code: 'en', nativeName: 'English', isDefault: true }],
+        content: () => [
+          { code: 'en', nativeName: 'English', isDefault: true },
+          { code: 'nl', nativeName: 'Nederlands', isDefault: false },
+        ],
+      },
+    });
+
+    await render(ctx);
+
+    const codes = [...host.querySelectorAll<HTMLOptionElement>('#wiki-locale option')].map((o) => o.value);
+    expect(codes).toEqual(['', 'en', 'nl']);
+  });
+
+  it('warns before the tick that a language is already taken in that group', async () => {
+    // The backend refuses this on its next pass; saying so here means the author learns now rather than
+    // from a rejection receipt seconds later.
+    const ctx = ctxFor('a-third/edit', {
+      locale: bilingual(),
+      schema: makeMockSchema({
+        page: [KRAKEN, { ...KRAKEN, id: 3, slug: 'a-third', title: 'A third', revisionNo: 1 }],
+        link: [],
+        source: [],
+        media: [],
+        revision: [],
+      }),
+      apiResponses: {
+        'data/site/main/index': {
+          ...INDEX,
+          'der-krake': {
+            title: 'Der Krake',
+            summary: null,
+            tags: null,
+            updatedAt: null,
+            locale: 'de',
+            translationOf: 'the-kraken',
+          },
+          'a-third': {
+            title: 'A third',
+            summary: null,
+            tags: null,
+            updatedAt: null,
+            locale: null,
+            translationOf: null,
+          },
+        },
+      },
+    });
+    await render(ctx);
+
+    await pick('#wiki-locale', 'de');
+    await pick('#wiki-translation-of', 'the-kraken');
+
+    expect(host.textContent).toContain('der-krake');
+  });
+
+  it('offers no translation at all when the handle is null', async () => {
+    // Two reasons, deliberately indistinguishable: this manifest did not declare `external.kinds`, or the
+    // operator configured no provider — which is every site by default. Both look like this.
+    const ctx = ctxFor('the-kraken/edit', { locale: bilingual() });
+
+    await render(ctx);
+
+    const button = host.querySelector<HTMLButtonElement>('.wiki__translate button');
+    expect(button?.disabled).toBe(true);
+    expect(host.textContent).toContain('no translation provider configured');
+  });
+
+  it('translates into the language asked for, and saves none of it', async () => {
+    const translation = makeMockTranslation();
+    const ctx = ctxFor('the-kraken/edit', { locale: bilingual(), translation });
+    await render(ctx);
+
+    await pick('#wiki-translate-target', 'de');
+    await click('.wiki__translate button');
+
+    expect(translation.requests.every((request) => request.to === 'de')).toBe(true);
+    expect(host.querySelector('.wiki__machine')?.textContent).toContain('[de]');
+    // The whole posture of this feature: a machine draft is a proposal, and nothing reached the store.
+    expect(ctx.api.calls.filter((call) => call.method === 'put')).toEqual([]);
+  });
+
+  it('says a refusal out loud rather than falling back to the untranslated original', async () => {
+    const ctx = ctxFor('the-kraken/edit', {
+      locale: bilingual(),
+      translation: makeMockTranslation({ fail: apiError(403, { detail: 'below external.usedBy' }) }),
+    });
+    await render(ctx);
+
+    await pick('#wiki-translate-target', 'de');
+    await click('.wiki__translate button');
+
+    expect(host.textContent).toContain('not allowed to use');
+    expect(host.querySelector('.wiki__machine')).toBeNull();
+  });
+
+  it('opens the draft as a new page, carrying the language and the original it belongs to', async () => {
+    const ctx = ctxFor('the-kraken/edit', { locale: bilingual(), translation: makeMockTranslation() });
+    await render(ctx);
+    await pick('#wiki-translate-target', 'de');
+    await click('.wiki__translate button');
+
+    await click('.wiki__machine .wiki__btn');
+
+    expect(ctx.navigations.map((n) => n.subpath)).toEqual(['_new']);
+    const parked = peekTranslation();
+    clearTranslation();
+    expect(parked).toMatchObject({
+      slug: 'the-kraken-de',
+      locale: 'de',
+      translationOf: 'the-kraken',
+    });
+    expect(parked?.markdown).toContain('[de]');
   });
 
   it('says a save is queued instead of claiming it landed', async () => {

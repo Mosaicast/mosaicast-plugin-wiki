@@ -6,6 +6,7 @@ package dev.mosaicast.plugin.wiki;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import dev.mosaicast.plugin.api.Criteria;
@@ -30,16 +31,8 @@ import org.junit.jupiter.api.Test;
 class WikiIngestTest {
 
     private static FakeSchemaStore schema() {
-        return new FakeSchemaStore("plugin_wiki_")
-                .withEntity("page", "slug", "title", "summary", "markdown", "searchText",
-                        "tags", "status", "createdAt", "updatedAt", "updatedBy", "revisionNo")
-                .withFulltext("page", "searchText")
-                .withEntity("revision", "pageSlug", "revisionNo", "title", "markdown", "comment",
-                        "author", "createdAt")
-                .withEntity("link", "fromSlug", "toSlug", "kind", "label")
-                .withEntity("source", "pageSlug", "label", "url", "note", "accessedAt", "position")
-                .withEntity("media", "pageSlug", "url", "kind", "provider", "caption", "position",
-                        "uploadRef");
+        // Built from plugin.json, never transcribed -- see WikiSchemaFixture for why.
+        return WikiSchemaFixture.schema();
     }
 
     private static FakePluginContext ctx(FakeSchemaStore schema, MapPluginConfig config) {
@@ -325,6 +318,38 @@ class WikiIngestTest {
 
         assertTrue(plugin.urls().isEmpty());
         assertTrue(plugin.metaFor("half-written").isEmpty());
+    }
+
+    @Test
+    void extractsSourcesUnderAHeadingOnlyTheOperatorConfigured() {
+        // A wiki written in a language the shipped vocabulary never heard of. Without the config field its
+        // Sources section stays prose: no rows, and the reader prints the list twice.
+        var schema = schema();
+        var ctx = ctx(schema, new MapPluginConfig().with("sourceHeadings", "sources, quellen, fuentes"));
+        draft(ctx, "el-kraken", Map.of("title", "El Kraken", "markdown", """
+                Un calamar muy grande.
+
+                ## Fuentes
+                - [Un libro](https://example.com/libro) — consultado 2026-09
+                """));
+
+        new WikiPlugin().register(ctx);
+
+        assertEquals(1, schema.count("source", Criteria.where("pageSlug", Op.EQ, "el-kraken")));
+        assertEquals("Fuentes", pages(schema).get(0).sourcesHeading(),
+                "recorded on the page, so the reader strips this section without knowing the vocabulary");
+    }
+
+    @Test
+    void recordsNoSourcesHeadingForAPageThatHasNoSuchSection() {
+        var schema = schema();
+        var ctx = ctx(schema);
+        draft(ctx, "the-kraken", Map.of("title", "The Kraken", "markdown", "Just prose."));
+
+        new WikiPlugin().register(ctx);
+
+        assertNull(pages(schema).get(0).sourcesHeading());
+        assertEquals(0, schema.count("source", Criteria.all()));
     }
 
     @Test

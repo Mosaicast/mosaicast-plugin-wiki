@@ -20,6 +20,16 @@ export interface PageRow {
   markdown: string | null;
   tags: string | null;
   status: string;
+  /**
+   * The heading that opened this page's Sources section, exactly as the author wrote it, or `null` when it
+   * has none. The reader strips that section because the structured rows replace it — being told which
+   * heading matched is what lets it do so without carrying the site's heading vocabulary as well.
+   */
+  sourcesHeading: string | null;
+  /** The language the body is written in, or `null` when the author stated none (read the site default). */
+  locale: string | null;
+  /** The slug of the page this one translates, or `null` when it is an original. Always a root: no chains. */
+  translationOf: string | null;
   createdAt: string | null;
   updatedAt: string | null;
   updatedBy: string | null;
@@ -110,12 +120,22 @@ export interface HomePage {
   updatedAt: string | null;
 }
 
-/** One page as the backend's `index` doc key summarises it. */
+/**
+ * One page as the backend's `index` doc key summarises it.
+ *
+ * **The index holds published pages only.** That is what makes it safe to build a language switcher from —
+ * a draft translation cannot appear in it, so the reader cannot leak one by listing a page's other
+ * languages. See `languages.ts`.
+ */
 export interface PageSummary {
   title: string;
   summary: string | null;
   tags: string | null;
   updatedAt: string | null;
+  /** The language this page is written in, or `null` when unstated. */
+  locale: string | null;
+  /** The original this page translates, or `null` when it is one. */
+  translationOf: string | null;
 }
 
 /** One episode as the backend's `episodes` doc key projects it, for `[[episode:…]]` cards. */

@@ -162,22 +162,37 @@ function expandTokens(markdown: string, options: RenderOptions): string {
 }
 
 /**
- * A `## Sources` heading through to the next heading, in either shipped UI language.
+ * A `## Sources` heading through to the next heading, in the two languages the shell ships with.
  *
- * The backend extracts that section into `source` rows, and the reader renders those instead: numbered,
- * with each note styled, and guaranteed to match what a citation audit would see. Leaving the prose copy
- * in the body as well would print the whole list twice.
+ * **Only a fallback now.** The vocabulary is a config field an operator edits, and the backend records the
+ * heading it actually matched on the page row — so this is used for a row ingested before that field
+ * existed, and for nothing else. Keeping a second copy of the list in the browser is exactly the
+ * duplication that made a Spanish wiki's Sources section render twice.
  */
-const SOURCES_SECTION = /^#{1,6}[ \t]*(?:sources|quellen)[ \t]*$[\s\S]*?(?=^#{1,6}[ \t]|$(?![\s\S]))/im;
+const LEGACY_SOURCES_SECTION = /^#{1,6}[ \t]*(?:sources|quellen)[ \t]*$[\s\S]*?(?=^#{1,6}[ \t]|$(?![\s\S]))/im;
+
+/** Escapes a heading so it matches itself: the text comes from a config field, not from us. */
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
 
 /**
  * Removes the body's own Sources section, for a page whose sources are rendered from the extracted rows.
  *
+ * The backend extracts that section into `source` rows and the reader renders those instead: numbered,
+ * with each note styled, and guaranteed to match what a citation audit would see. Leaving the prose copy
+ * in the body as well would print the whole list twice.
+ *
  * @param markdown the page body
+ * @param heading  the heading the backend matched (`page.sourcesHeading`); omitted or `null` falls back to
+ *                 the two shipped languages, which is right for a page ingested before that field existed
  * @returns the body without that section; unchanged when it has none
  */
-export function stripSourcesSection(markdown: string): string {
-  return markdown.replace(SOURCES_SECTION, '').trimEnd();
+export function stripSourcesSection(markdown: string, heading?: string | null): string {
+  const pattern = heading
+    ? new RegExp(`^#{1,6}[ \t]*${escapeRegExp(heading)}[ \t]*$[\\s\\S]*?(?=^#{1,6}[ \t]|$(?![\\s\\S]))`, 'im')
+    : LEGACY_SOURCES_SECTION;
+  return markdown.replace(pattern, '').trimEnd();
 }
 
 /** Turns a heading's text into a stable anchor id, unique within one page. */

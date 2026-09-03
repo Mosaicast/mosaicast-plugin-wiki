@@ -7,6 +7,8 @@ import { renderPage } from '../markdown';
 import { routeHref, routePath, toSlug, type WikiRoute } from '../routes';
 import { deleteKey, draftKey, SITE_PATH, type IngestReceipt, type PageRow, type PageSummary } from '../types';
 import type { PluginI18n } from '../i18n';
+import { defaultContentLocale, isMultilingual, localeName } from '../languages';
+import { peekTranslation, stashTranslation, translatePage, type TranslationDraft } from '../translate';
 import { Icon } from '../icons';
 import { describeApiError } from './useDoc';
 
@@ -64,6 +66,17 @@ export function EditorView({ ctx, i18n, slug, index, go }: EditorViewProps) {
   const [markdown, setMarkdown] = useState('');
   const [comment, setComment] = useState('');
   const [baseRevisionNo, setBaseRevisionNo] = useState<number | null>(null);
+  // The language this page is written in, and the page it translates. Both are only offered on a site that
+  // authors in more than one language -- elsewhere they would be a picker with one option.
+  const [locale, setLocale] = useState('');
+  const [translationOf, setTranslationOf] = useState('');
+  const [target, setTarget] = useState('');
+  const [translation, setTranslation] =
+    useState<{ busy: boolean; draft: TranslationDraft | null; error: string | null }>({
+      busy: false,
+      draft: null,
+      error: null,
+    });
 
   const [save, setSave] = useState<SaveState>({ phase: 'idle' });
   const [upload, setUpload] = useState<{ busy: boolean; error: string | null }>({ busy: false, error: null });
@@ -96,6 +109,8 @@ export function EditorView({ ctx, i18n, slug, index, go }: EditorViewProps) {
           setTags((row.tags ?? '').split(',').filter(Boolean).join(', '));
           setMarkdown(row.markdown ?? '');
           setBaseRevisionNo(row.revisionNo ?? null);
+          setLocale(row.locale ?? '');
+          setTranslationOf(row.translationOf ?? '');
         }
         setLoaded(true);
       })
@@ -141,6 +156,36 @@ export function EditorView({ ctx, i18n, slug, index, go }: EditorViewProps) {
       cancelled = true;
     };
   }, [ctx]);
+
+  // A translation the author asked to open as a new page. Read rather than consumed: navigating re-hands
+  // `ctx`, which re-runs the index fetch, which unmounts this editor and mounts a fresh one -- a
+  // clear-on-read hand-off is swallowed by the mount that is thrown away. `WikiPage` clears it when the
+  // route leaves `_new`. Nothing machine-written was ever stored to get here.
+  useEffect(() => {
+    if (!isNew) {
+      return;
+    }
+    const parked = peekTranslation();
+    if (!parked) {
+      return;
+    }
+    setTitle(parked.title);
+    setSummary(parked.summary);
+    setMarkdown(parked.markdown);
+    setLocale(parked.locale);
+    setTranslationOf(parked.translationOf);
+    setSlugTouched(true);
+    setNewSlug(parked.slug);
+  }, [isNew]);
+
+  // A new page on a multilingual site starts in the site's default language rather than unstated: an
+  // unstated page reads as the default anyway, and leaving the picker empty is how a wiki ends up with the
+  // field on every page and a value on none. Runs once per mount, so the author can still pick anything.
+  useEffect(() => {
+    if (isNew && isMultilingual(ctx)) {
+      setLocale((current) => current || defaultContentLocale(ctx) || '');
+    }
+  }, [ctx, isNew]);
 
   useEffect(() => () => {
     if (pollRef.current != null) {
@@ -224,6 +269,8 @@ export function EditorView({ ctx, i18n, slug, index, go }: EditorViewProps) {
         author: ctx.user?.id ?? null,
         status: 'published',
         baseRevisionNo,
+        locale: locale || null,
+        translationOf: translationOf || null,
       });
     } catch (error: unknown) {
       ctx.log('warn', `wiki: draft could not be written: ${String(error)}`);
@@ -268,6 +315,57 @@ export function EditorView({ ctx, i18n, slug, index, go }: EditorViewProps) {
     }, POLL_MS);
   };
 
+  /**
+   * Asks the host to translate this page, and shows the answer without saving any of it.
+   *
+   * `ctx.translation` is read here rather than held: it is `null` unless the manifest declared the kind
+   * *and* the operator configured a provider, and the operator half can change while this page is open.
+   */
+  const onTranslate = async () => {
+    const client = ctx.translation;
+    if (!client || !target) {
+      return;
+    }
+    setTranslation({ busy: true, draft: null, error: null });
+    try {
+      const draft = await translatePage(
+        client,
+        { title, summary, markdown, from: locale || null },
+        target,
+      );
+      setTranslation({ busy: false, draft, error: null });
+    } catch (error: unknown) {
+      // Shown, never swallowed into the untranslated original: a reader who cannot tell a translation
+      // from an original is worse off than one who sees an error.
+      ctx.log('warn', `wiki: translation refused: ${describeApiError(error)}`);
+      setTranslation({
+        busy: false,
+        draft: null,
+        error: isPluginApiError(error) && error.status === 403
+          ? i18n.t('editor.translateForbidden')
+          : i18n.t('editor.translateFailed'),
+      });
+    }
+  };
+
+  /** Opens the machine draft as a new page, prefilled. Nothing is written until the author saves. */
+  const onOpenTranslation = () => {
+    const draft = translation.draft;
+    if (!draft || !slug) {
+      return;
+    }
+    stashTranslation({
+      slug: `${slug}-${draft.target}`,
+      title: draft.title,
+      summary: draft.summary,
+      markdown: draft.markdown,
+      locale: draft.target,
+      // A translation of a translation belongs to the same original: the backend collapses it anyway.
+      translationOf: translationOf || slug,
+    });
+    ctx.route.navigate(routePath({ view: 'new' }));
+  };
+
   const onDelete = async () => {
     if (isNew || !slug) {
       return;
@@ -295,6 +393,27 @@ export function EditorView({ ctx, i18n, slug, index, go }: EditorViewProps) {
   }
 
   const savedSlug = isNew ? (slugTouched ? toSlug(newSlug) : toSlug(title)) : slug;
+
+  // Language controls exist only where they mean something. On a site with one content language a picker
+  // has one option and a "translation of" box can never be answered, so neither is rendered at all.
+  const contentLocales = ctx.locale.content();
+  const multilingual = isMultilingual(ctx);
+  // Everything this page could be a translation of: any published page that is not this one and is not
+  // itself a translation. The backend collapses a chain anyway, but offering one would be misleading.
+  const originals = Object.entries(index)
+    .filter(([candidate, summary]) => candidate !== savedSlug && !summary.translationOf)
+    .sort(([, a], [, b]) => a.title.localeCompare(b.title));
+  // The backend refuses a second page in one language per group; saying so here means the author learns
+  // before the tick rather than from a rejection receipt a few seconds later.
+  const languageTaken =
+    translationOf && locale
+      ? Object.entries(index).find(
+          ([candidate, summary]) =>
+            candidate !== savedSlug &&
+            summary.locale === locale &&
+            (candidate === translationOf || summary.translationOf === translationOf),
+        )?.[0] ?? null
+      : null;
 
   return (
     <form onSubmit={onSubmit}>
@@ -357,6 +476,126 @@ export function EditorView({ ctx, i18n, slug, index, go }: EditorViewProps) {
         )}
         <p className="wiki__hint">{i18n.t('editor.tagsHint')}</p>
       </div>
+
+      {multilingual && (
+        <div className="wiki__row">
+          <div className="wiki__field">
+            <label htmlFor="wiki-locale">{i18n.t('editor.language')}</label>
+            <select
+              id="wiki-locale"
+              className="wiki__input"
+              value={locale}
+              onChange={(event) => setLocale(event.target.value)}
+            >
+              {/* Unstated is a real answer, not a placeholder: it means "the site default", which is what
+                  every page written before this field existed says. */}
+              <option value="">{i18n.t('editor.languageUnstated')}</option>
+              {contentLocales.map((entry) => (
+                <option key={entry.code} value={entry.code}>
+                  {entry.nativeName}
+                </option>
+              ))}
+            </select>
+            <p className="wiki__hint">{i18n.t('editor.languageHint')}</p>
+          </div>
+
+          <div className="wiki__field">
+            <label htmlFor="wiki-translation-of">{i18n.t('editor.translationOf')}</label>
+            <select
+              id="wiki-translation-of"
+              className="wiki__input"
+              value={translationOf}
+              onChange={(event) => setTranslationOf(event.target.value)}
+            >
+              <option value="">{i18n.t('editor.translationOfNone')}</option>
+              {originals.map(([candidate, summary]) => (
+                <option key={candidate} value={candidate}>
+                  {summary.title}
+                  {summary.locale ? ` (${localeName(ctx, summary.locale)})` : ''}
+                </option>
+              ))}
+            </select>
+            {languageTaken ? (
+              <p className="wiki__error">
+                {i18n.t('editor.translationTaken', { slug: languageTaken })}
+              </p>
+            ) : (
+              <p className="wiki__hint">{i18n.t('editor.translationOfHint')}</p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {multilingual && !isNew && (
+        <div className="wiki__field">
+          <span className="wiki__label">{i18n.t('editor.translate')}</span>
+          <div className="wiki__translate">
+            <select
+              id="wiki-translate-target"
+              className="wiki__input"
+              aria-label={i18n.t('editor.translateInto')}
+              value={target}
+              onChange={(event) => setTarget(event.target.value)}
+            >
+              <option value="">{i18n.t('editor.translateInto')}</option>
+              {contentLocales
+                .filter((entry) => entry.code !== locale)
+                .map((entry) => (
+                  <option key={entry.code} value={entry.code}>
+                    {entry.nativeName}
+                  </option>
+                ))}
+            </select>
+            <button
+              type="button"
+              className="wiki__btn wiki__btn--ghost"
+              onClick={onTranslate}
+              // Disabled on the handle, not on a click that would 403 or 409: the host refuses a call
+              // below `external.usedBy`, and `available()` is the provider half of the same question.
+              disabled={!ctx.translation?.available() || !target || translation.busy}
+            >
+              <Icon name="translate" />
+              {translation.busy ? i18n.t('editor.translating') : i18n.t('editor.translate')}
+            </button>
+          </div>
+          {!ctx.translation && <p className="wiki__hint">{i18n.t('editor.translateUnavailable')}</p>}
+          {translation.error && <p className="wiki__error">{translation.error}</p>}
+
+          {translation.draft && (
+            <div className="wiki__machine">
+              <p className="wiki__hint">
+                <Icon name="warning" />
+                {i18n.t('editor.translateDraft')}
+              </p>
+              <h3 lang={translation.draft.target}>{translation.draft.title}</h3>
+              <pre className="wiki__machinebody" lang={translation.draft.target}>
+                {translation.draft.markdown}
+              </pre>
+              {translation.draft.kept > 0 && (
+                <p className="wiki__hint">
+                  {i18n.t('editor.translateKept', {
+                    kept: String(translation.draft.kept),
+                    total: String(translation.draft.total),
+                  })}
+                </p>
+              )}
+              <p className="wiki__hint">{i18n.t('editor.translateSourcesHint')}</p>
+              <div className="wiki__actions">
+                <button type="button" className="wiki__btn" onClick={onOpenTranslation}>
+                  {i18n.t('editor.translateOpen')}
+                </button>
+                <button
+                  type="button"
+                  className="wiki__btn wiki__btn--ghost"
+                  onClick={() => setTranslation({ busy: false, draft: null, error: null })}
+                >
+                  {i18n.t('editor.translateDiscard')}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="wiki__editor">
         <div className="wiki__field">

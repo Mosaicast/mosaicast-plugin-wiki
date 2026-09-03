@@ -95,4 +95,16 @@ describe('the manifest and the wiki agree', () => {
     // has no reason to, and a block declaring neither flag is refused at load.
     expect(tags?.writesEpisodes).toBe(false);
   });
+
+  it('declares the external service it uses, since ctx.translation is null without it', () => {
+    // The trap of the 0.11.0 bump: `translation` was already nullable, so a plugin that used it on 0.10.0
+    // keeps compiling and simply gets `null` at runtime until the manifest asks. Nothing warns.
+    const external = (rawManifest as { external?: { kinds?: string[]; usedBy?: string } }).external;
+    expect(external?.kinds).toEqual(['translation']);
+    // An empty list, or a kind the host has no bean for, is rejected at load.
+    expect(external?.kinds?.length).toBeGreaterThan(0);
+    // A metered provider behind an anonymous floor is an open spending endpoint; core loads it and warns.
+    // `podcaster` matches data.writableBy, which is who can write a page worth translating anyway.
+    expect(external?.usedBy).toBe('podcaster');
+  });
 });

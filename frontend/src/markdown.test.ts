@@ -185,7 +185,23 @@ describe('stripSourcesSection', () => {
     expect(stripSourcesSection('Prose.\n\n## Quellen\n- [W](https://example.com)\n')).toBe('Prose.');
   });
 
+  it('strips the heading the backend actually matched, in a language it never shipped with', () => {
+    // The vocabulary is a config field now. The browser is told which heading matched rather than keeping
+    // a second copy of the list -- which is why a Spanish wiki used to print its sources twice.
+    const body = 'Prosa.\n\n## Fuentes\n- [Un libro](https://example.com/libro)\n';
+
+    expect(stripSourcesSection(body, 'Fuentes')).toBe('Prosa.');
+    expect(stripSourcesSection(body)).toContain('Fuentes');   // no heading given: the shipped pair only
+  });
+
+  it('treats a configured heading as text, not as a pattern', () => {
+    const body = 'Prose.\n\n## Sources (cited)\n- [W](https://example.com)\n';
+
+    expect(stripSourcesSection(body, 'Sources (cited)')).toBe('Prose.');
+  });
+
   it('leaves a body without one untouched', () => {
     expect(stripSourcesSection('Just prose.')).toBe('Just prose.');
+    expect(stripSourcesSection('Just prose.', 'Fuentes')).toBe('Just prose.');
   });
 });

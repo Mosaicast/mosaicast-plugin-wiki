@@ -8,6 +8,7 @@ import dev.mosaicast.plugin.api.Criteria;
 import dev.mosaicast.plugin.api.Criteria.Direction;
 import dev.mosaicast.plugin.api.Criteria.Op;
 import dev.mosaicast.plugin.api.DocEntry;
+import dev.mosaicast.plugin.api.Locales;
 import dev.mosaicast.plugin.api.OgMeta;
 import dev.mosaicast.plugin.api.PageRouteProvider;
 import dev.mosaicast.plugin.api.PluginBackend;
@@ -24,12 +25,16 @@ import dev.mosaicast.plugin.api.UserDataHandler;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.HashSet;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -106,6 +111,9 @@ public class WikiPlugin implements PluginBackend, ShareMetadataProvider, Sitemap
     /** The page the wiki's front page reads from, unless an operator points it elsewhere. */
     private static final String DEFAULT_HOME_SLUG = "main-page";
 
+    /** The shipped Sources vocabulary, as the config field's default spells it. */
+    private static final String DEFAULT_SOURCE_HEADINGS = "sources,quellen";
+
     /** The namespace this plugin tags under. Opaque to the host, and nobody else can name it. */
     private static final String TAG_SUBJECT_PREFIX = "page:";
 
@@ -155,24 +163,42 @@ public class WikiPlugin implements PluginBackend, ShareMetadataProvider, Sitemap
 
     // --- the write path -------------------------------------------------------------------------------
 
+    /**
+     * Applies every pending draft, originals before translations.
+     *
+     * <p><strong>The order is not cosmetic.</strong> A translation names the page it translates, and a
+     * draft naming a page that does not exist is rejected — with the draft deleted, because a rejection is
+     * the author's to fix rather than something to retry forever. Save an original and its translation
+     * between two ticks and the doc store hands them back in whatever order it likes: half the time the
+     * translation is applied first, against a wiki that has not got the original yet, and a podcaster loses
+     * writing to an accident of iteration order. Sorting costs one pass and removes the race entirely.
+     *
+     * <p>One pass is enough because the graph is a star: a translation only ever points at an original, so
+     * there is no chain to resolve in dependency order.
+     */
     private void ingestDrafts() {
         SchemaStore schema = ctx.schema();
         if (schema == null) {
             return;
         }
+        record Pending(String key, String slug, Draft draft) {}
+        List<Pending> pending = new ArrayList<>();
         for (DocEntry entry : ctx.store().query(Scope.site(), DRAFT_PREFIX)) {
-            String slug = entry.key().substring(DRAFT_PREFIX.length());
             Draft draft = ctx.store().get(Scope.site(), entry.key(), Draft.class).orElse(null);
-            if (draft == null) {
-                continue;
+            if (draft != null) {
+                pending.add(new Pending(entry.key(), entry.key().substring(DRAFT_PREFIX.length()), draft));
             }
+        }
+        pending.sort(Comparator.comparingInt(p -> blankToNull(p.draft().translationOf()) == null ? 0 : 1));
+
+        for (Pending item : pending) {
             try {
-                ingestOne(schema, slug, draft, entry.key());
+                ingestOne(schema, item.slug(), item.draft(), item.key());
             } catch (RuntimeException e) {
                 // Report the failure to the editor rather than retrying it silently forever.
-                ctx.logger().warn("wiki: draft '{}' could not be ingested", slug, e);
-                receipt(slug, "failed", e.getMessage(), null);
-                ctx.store().delete(Scope.site(), entry.key());
+                ctx.logger().warn("wiki: draft '{}' could not be ingested", item.slug(), e);
+                receipt(item.slug(), "failed", e.getMessage(), null);
+                ctx.store().delete(Scope.site(), item.key());
             }
         }
     }
@@ -180,6 +206,19 @@ public class WikiPlugin implements PluginBackend, ShareMetadataProvider, Sitemap
     private void ingestOne(SchemaStore schema, String slug, Draft draft, String draftKey) {
         if (!SLUG.matcher(slug).matches()) {
             receipt(slug, "rejected", "not a usable slug", null);
+            ctx.store().delete(Scope.site(), draftKey);
+            return;
+        }
+
+        String locale;
+        String translationOf;
+        try {
+            locale = contentLocaleOf(draft);
+            translationOf = translationRootFor(schema, slug, locale, draft.translationOf());
+        } catch (DraftRejected e) {
+            // A rejection is the author's to fix, not something to retry every 30s forever. The draft goes
+            // so the receipt is the last word on it -- unlike a conflict, which keeps the writing.
+            receipt(slug, "rejected", e.getMessage(), null);
             ctx.store().delete(Scope.site(), draftKey);
             return;
         }
@@ -207,6 +246,9 @@ public class WikiPlugin implements PluginBackend, ShareMetadataProvider, Sitemap
         String status = STATUS_PUBLISHED.equals(draft.status()) || draft.status() == null
                 ? STATUS_PUBLISHED
                 : draft.status();
+        // Parsed once here rather than again inside replaceDerivedRows: the heading it matched belongs on
+        // the page row, so the reader can strip exactly this section without carrying the vocabulary too.
+        WikiMarkdown.Sources parsedSources = WikiMarkdown.sources(markdown, sourceHeadings());
         Instant now = Instant.now();
 
         Map<String, Object> values = new HashMap<>();
@@ -218,6 +260,9 @@ public class WikiPlugin implements PluginBackend, ShareMetadataProvider, Sitemap
         values.put("searchText", String.join("\n", title, tags, summary, markdown));
         values.put("tags", tags);
         values.put("status", status);
+        values.put("locale", locale);
+        values.put("translationOf", translationOf);
+        values.put("sourcesHeading", parsedSources == null ? null : parsedSources.heading());
         values.put("updatedAt", now);
         values.put("updatedBy", blankToNull(draft.author()));
         values.put("revisionNo", nextRevision);
@@ -239,11 +284,152 @@ public class WikiPlugin implements PluginBackend, ShareMetadataProvider, Sitemap
                 "author", draft.author() == null ? "" : draft.author(),
                 "createdAt", now));
 
-        replaceDerivedRows(schema, slug, markdown);
+        replaceDerivedRows(schema, slug, markdown, parsedSources);
         publishTags(slug, draft.tags());
 
         receipt(slug, "ok", null, nextRevision);
         ctx.store().delete(Scope.site(), draftKey);
+    }
+
+    /**
+     * The language a draft says it is written in, checked against the languages this site authors in.
+     *
+     * <p><strong>The browser's list is a hint; what arrives here is input.</strong> The editor builds its
+     * dropdown from {@code ctx.locale.content()}, but a draft is a document any podcaster may PUT, and
+     * {@link Locales#isContentLocale(String)} is the only place that can say no. A page stored under a
+     * language nobody offers is invisible to every reader and to the editor's own language switcher —
+     * a page that quietly does not exist.
+     *
+     * <p>Blank is a legitimate answer and means <em>unstated</em>: every page written before this field
+     * existed is in that state, and a monolingual site never leaves it. Unstated reads as the site default,
+     * which is why it is not an error.
+     *
+     * @param draft the draft being ingested
+     * @return the lower-cased locale code, or {@code null} when the author stated none
+     * @throws DraftRejected when the code names a language this site does not author content in
+     */
+    private String contentLocaleOf(Draft draft) {
+        String locale = blankToNull(draft.locale());
+        if (locale == null) {
+            return null;
+        }
+        locale = locale.strip().toLowerCase(Locale.ROOT);
+        if (!ctx.locales().isContentLocale(locale)) {
+            throw new DraftRejected("'" + locale + "' is not a language this site authors content in");
+        }
+        return locale;
+    }
+
+    /**
+     * Resolves what a draft claims to translate into the root of its translation group.
+     *
+     * <p><strong>The graph is a star, never a chain.</strong> Every translation points straight at the
+     * original, so "the other languages of this page" is one query and can neither cycle nor need a walk.
+     * A draft naming another translation is collapsed one hop to that translation's own root rather than
+     * refused — an author picking the German page as the thing the French one translates means the obvious
+     * thing, and there is no reading of it that produces a chain.
+     *
+     * <p>Everything else here is an invariant with nowhere else to live: no plugin code runs at request
+     * time (§7.6), so the editor's dropdown is a convenience and this is the enforcement. In particular
+     * <strong>one language per group</strong> — a second German translation is a fork the reader cannot
+     * present, since a language switcher can only offer one page per language.
+     *
+     * @param schema        the store, already known non-null
+     * @param slug          the page being saved
+     * @param locale        its validated language, or {@code null} when unstated
+     * @param requested     what the draft claims to translate; blank means "an original"
+     * @return the root page's slug, or {@code null} when this page is itself an original
+     * @throws DraftRejected when the claim cannot hold
+     */
+    private String translationRootFor(SchemaStore schema, String slug, String locale, String requested) {
+        String root = blankToNull(requested);
+        if (root == null) {
+            return null;
+        }
+        root = root.strip().toLowerCase(Locale.ROOT);
+        if (root.equals(slug)) {
+            throw new DraftRejected("a page cannot be a translation of itself");
+        }
+        PageRow target = findPage(schema, root);
+        if (target == null) {
+            throw new DraftRejected("there is no page '" + root + "' to translate");
+        }
+        // Collapse to the root, so what gets stored is always an original's slug.
+        String targetsRoot = blankToNull(target.translationOf());
+        if (targetsRoot != null) {
+            root = targetsRoot;
+            if (root.equals(slug)) {
+                throw new DraftRejected("'" + target.slug() + "' is already a translation of this page");
+            }
+            if (findPage(schema, root) == null) {
+                throw new DraftRejected("there is no page '" + root + "' to translate");
+            }
+        }
+        // A page other pages translate cannot itself become a translation -- that is how a chain forms.
+        long dependents = schema.count("page", Criteria.where("translationOf", Op.EQ, slug));
+        if (dependents > 0) {
+            throw new DraftRejected(
+                    dependents + " page(s) already translate this one, so it cannot become a translation");
+        }
+        if (locale != null) {
+            String holder = sameLanguageIn(schema, root, slug, locale);
+            if (holder != null) {
+                throw new DraftRejected("'" + holder + "' is already the " + locale + " version of '" + root + "'");
+            }
+        }
+        return root;
+    }
+
+    /**
+     * Which page in a translation group already claims a language, if any.
+     *
+     * @param schema the store
+     * @param root   the group's original
+     * @param self   the page being saved, which never collides with itself
+     * @param locale the language being claimed
+     * @return the slug already holding it, or {@code null}
+     */
+    private String sameLanguageIn(SchemaStore schema, String root, String self, String locale) {
+        PageRow original = findPage(schema, root);
+        if (original != null && !original.slug().equals(self) && locale.equals(original.locale())) {
+            return original.slug();
+        }
+        for (PageRow sibling : schema.select("page",
+                Criteria.where("translationOf", Op.EQ, root), PageRow.class)) {
+            if (!sibling.slug().equals(self) && locale.equals(sibling.locale())) {
+                return sibling.slug();
+            }
+        }
+        return null;
+    }
+
+    /** A draft the author has to fix: reported through its receipt, never retried. */
+    private static final class DraftRejected extends RuntimeException {
+        DraftRejected(String message) {
+            super(message);
+        }
+    }
+
+    /**
+     * The headings this site opens a Sources section with.
+     *
+     * <p>A config field rather than a table keyed off {@code page.locale}, because a per-language table
+     * only helps the languages somebody thought to add — which is the same failure one step later. A
+     * comma-separated list an operator edits covers a wiki written in a language nobody anticipated, and
+     * it is the only place the vocabulary lives now that the reader is told which heading matched.
+     *
+     * @return the configured headings, lower-cased and blank-free; the shipped pair when unset
+     */
+    private List<String> sourceHeadings() {
+        String configured = ctx.config().get("sourceHeadings", String.class, DEFAULT_SOURCE_HEADINGS);
+        List<String> headings = new ArrayList<>();
+        for (String heading : (configured == null ? DEFAULT_SOURCE_HEADINGS : configured).split(",")) {
+            String trimmed = heading.strip().toLowerCase(Locale.ROOT);
+            if (!trimmed.isEmpty() && !headings.contains(trimmed)) {
+                headings.add(trimmed);
+            }
+        }
+        return headings;
     }
 
     /**
@@ -296,7 +482,8 @@ public class WikiPlugin implements PluginBackend, ShareMetadataProvider, Sitemap
      * projection of the markdown -- so reconciling them individually would be more code for the same
      * result, and the counts here are per page, not per wiki.
      */
-    private void replaceDerivedRows(SchemaStore schema, String slug, String markdown) {
+    private void replaceDerivedRows(SchemaStore schema, String slug, String markdown,
+                                    WikiMarkdown.Sources parsedSources) {
         schema.delete("link", Criteria.where("fromSlug", Op.EQ, slug));
         schema.delete("media", Criteria.where("pageSlug", Op.EQ, slug));
         schema.delete("source", Criteria.where("pageSlug", Op.EQ, slug));
@@ -321,7 +508,7 @@ public class WikiPlugin implements PluginBackend, ShareMetadataProvider, Sitemap
             schema.insert("media", row);
         }
         position = 0;
-        for (WikiMarkdown.Source source : WikiMarkdown.sources(markdown)) {
+        for (WikiMarkdown.Source source : parsedSources == null ? List.<WikiMarkdown.Source>of() : parsedSources.items()) {
             Map<String, Object> row = new HashMap<>();
             row.put("pageSlug", slug);
             row.put("label", source.label());
@@ -466,7 +653,8 @@ public class WikiPlugin implements PluginBackend, ShareMetadataProvider, Sitemap
                 Criteria.where("status", Op.EQ, STATUS_PUBLISHED).orderBy("updatedAt", Direction.DESC),
                 PageRow.class)) {
             index.put(page.slug(), new PageSummary(page.title(), page.summary(), page.tags(),
-                    page.updatedAt() == null ? null : page.updatedAt().toString()));
+                    page.updatedAt() == null ? null : page.updatedAt().toString(),
+                    page.locale(), page.translationOf()));
         }
         return index;
     }
@@ -533,21 +721,94 @@ public class WikiPlugin implements PluginBackend, ShareMetadataProvider, Sitemap
         String description = blankToNull(page.summary()) == null
                 ? WikiMarkdown.excerpt(page.markdown(), SUMMARY_CHARS)
                 : page.summary();
-        return Optional.of(new OgMeta(page.title(), description, firstImage(schema, slug)));
+        // `og:locale` is the language of *this* page, not of the install (§6.4, contract 0.12.0). A German
+        // article stays German for an English visitor, so announcing it in the request's locale would be
+        // the install-wide bug one level down. Null when the author stated no language: "whatever the host
+        // resolved" is the honest answer for a page that never claimed one.
+        return Optional.of(new OgMeta(page.title(), description, firstImage(schema, slug), page.locale()));
     }
 
+    /**
+     * Every published page, each carrying the other languages it exists in.
+     *
+     * <p><strong>The map of paths is what this plugin needed and a list of locale codes could not give
+     * it.</strong> A wiki translation lives at its own slug — {@code /p/wiki/the-kraken} and
+     * {@code /p/wiki/der-krake} are one article in two languages — so "this page also exists in German",
+     * with the host appending {@code ?lang=de} to a single path, would have described a wiki nobody has.
+     * Every member of a group therefore declares the <em>same</em> map, which is also what stops two
+     * entries handing a crawler two answers to one question.
+     *
+     * <p><strong>An alternate is a claim about content, so three things have to be true before one is
+     * made:</strong> the page states a language (an unstated one means "the site default", which is a guess
+     * and not a claim), the group has more than one member (a group of one is an hreflang set that says
+     * nothing), and every member is <em>published</em> — the same per-row rule the reader and
+     * {@code SearchProvider} follow, in a fourth place, because an unpublished translation announced to a
+     * crawler is a promise of a page it will be served a 404 for.
+     *
+     * @return the entries, each with its translation group where there is one
+     */
     @Override
     public List<SitemapUrl> urls() {
         SchemaStore schema = ctx == null ? null : ctx.schema();
         if (schema == null) {
             return List.of();
         }
+        List<PageRow> published = schema.select("page",
+                Criteria.where("status", Op.EQ, STATUS_PUBLISHED), PageRow.class);
+
+        // slug -> its group's alternates, built once per group so every member declares the same map.
+        Map<String, Map<String, String>> groups = translationGroups(published);
+
         List<SitemapUrl> urls = new ArrayList<>();
-        for (PageRow page : schema.select("page",
-                Criteria.where("status", Op.EQ, STATUS_PUBLISHED), PageRow.class)) {
-            urls.add(new SitemapUrl("/p/wiki/" + page.slug(), page.updatedAt()));
+        for (PageRow page : published) {
+            urls.add(new SitemapUrl("/p/wiki/" + page.slug(), page.updatedAt(),
+                    groups.getOrDefault(page.slug(), Map.of())));
         }
         return urls;
+    }
+
+    /**
+     * Builds one alternates map per translation group and hands it to every member.
+     *
+     * @param published every published page
+     * @return slug -> the group's locale-to-path map, absent for a page with no group worth declaring
+     */
+    private static Map<String, Map<String, String>> translationGroups(List<PageRow> published) {
+        Map<String, Map<String, String>> byRoot = new LinkedHashMap<>();
+        Map<String, List<String>> membersByRoot = new LinkedHashMap<>();
+
+        for (PageRow page : published) {
+            String root = blankToNull(page.translationOf()) == null ? page.slug() : page.translationOf();
+            String locale = blankToNull(page.locale());
+            membersByRoot.computeIfAbsent(root, key -> new ArrayList<>()).add(page.slug());
+            if (locale == null) {
+                continue;   // no stated language, so nothing honest to say about this member
+            }
+            // Sorted by locale code: the same rows must produce the same sitemap, and insertion order here
+            // is whatever order the query happened to return.
+            Map<String, String> alternates = byRoot.computeIfAbsent(root, key -> new TreeMap<>());
+            // The ingest tick refuses two pages in one language per group, so a collision here would mean
+            // rows written before that rule existed. Keep the first and say nothing about the second
+            // rather than throw: SitemapUrl rejects a duplicate locale, and a throw here costs the whole
+            // site's plugin sitemap over one bad row.
+            alternates.putIfAbsent(locale, "/p/wiki/" + page.slug());
+        }
+
+        Map<String, Map<String, String>> bySlug = new LinkedHashMap<>();
+        byRoot.forEach((root, alternates) -> {
+            if (alternates.size() < 2) {
+                return;   // a group of one is an hreflang set that says nothing
+            }
+            Map<String, String> shared = Collections.unmodifiableMap(new LinkedHashMap<>(alternates));
+            for (String member : membersByRoot.getOrDefault(root, List.of())) {
+                // Only a member the map actually names: SitemapUrl requires an entry pointing at `loc`,
+                // and a page whose language is unstated has none.
+                if (shared.containsValue("/p/wiki/" + member)) {
+                    bySlug.put(member, shared);
+                }
+            }
+        });
+        return bySlug;
     }
 
     /**
@@ -754,15 +1015,15 @@ public class WikiPlugin implements PluginBackend, ShareMetadataProvider, Sitemap
 
     /** What the editor writes to {@code draft:<slug>}. Every field is optional except the body. */
     record Draft(String title, String summary, String markdown, List<String> tags, String status,
-                 String comment, String author, Long baseRevisionNo) {}
+                 String comment, String author, Long baseRevisionNo, String locale, String translationOf) {}
 
     /** The receipt the editor polls after saving, at {@code ingest:<slug>}. */
     record IngestReceipt(String state, String detail, Long revisionNo, String at) {}
 
     /** A row of the {@code page} entity; component names match the manifest's field names. */
     record PageRow(long id, String slug, String title, String summary, String markdown, String searchText,
-                   String tags, String status, Instant createdAt, Instant updatedAt, String updatedBy,
-                   Long revisionNo) {}
+                   String tags, String status, String sourcesHeading, String locale, String translationOf,
+                   Instant createdAt, Instant updatedAt, String updatedBy, Long revisionNo) {}
 
     /** Only the parts of a {@code link} row the backend reasons about. */
     record WikiLinkRow(long id, String fromSlug, String toSlug, String kind, String label) {}
@@ -775,7 +1036,8 @@ public class WikiPlugin implements PluginBackend, ShareMetadataProvider, Sitemap
     record HomePage(String slug, String title, String markdown, String updatedAt) {}
 
     /** One page as the frontend's index needs it. */
-    record PageSummary(String title, String summary, String tags, String updatedAt) {}
+    record PageSummary(String title, String summary, String tags, String updatedAt, String locale,
+                       String translationOf) {}
 
     /** The counters the podcaster dashboard shows. */
     record WikiStats(long pages, long orphans, long brokenLinks, long pendingDrafts) {}

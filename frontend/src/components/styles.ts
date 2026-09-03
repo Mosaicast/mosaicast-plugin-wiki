@@ -143,8 +143,75 @@ export const WIKI_CSS = ICON_CSS + `
   .wiki__note { color: var(--mc-text-muted); }
   a.wiki__tag:hover { color: var(--mc-text); border-color: var(--mc-accent); text-decoration: none; }
 
-  .wiki__pageactions { display: flex; gap: 1rem; margin: 0 0 1rem; font-size: .875rem; }
+
+  /* The title and the controls that act on this page, on one line. Right-aligned so the heading keeps the
+     left edge every other block on the page shares. */
+  /* flow-root, so the float is contained without overflow:hidden -- which would clip the language menu
+     the moment it opened. */
+  .wiki__titlerow { display: flow-root; margin-bottom: .25rem; }
+  .wiki__titlerow .wiki__title { margin: 0; }
+  /* Floated rather than a flex sibling: a flex row can only shrink the heading or push the controls onto
+     their own line, and neither is what a title longer than one line should do. A float shortens just the
+     line boxes it sits beside, so the controls stay level with the first line and the rest of the title
+     wraps full width underneath them. */
+  .wiki__pagetools {
+    float: right; display: flex; align-items: center; gap: .25rem;
+    margin-left: 1rem;
+  }
+
+  /* Icon-only, so it needs a hit area a finger can reach and a label only a screen reader reads. */
+  .wiki__iconbtn {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 2rem; height: 2rem;
+    color: var(--mc-text-muted); border: 1px solid transparent; border-radius: .375rem;
+  }
+  .wiki__iconbtn:hover { color: var(--mc-text); border-color: var(--mc-border); text-decoration: none; }
+  .wiki__iconbtn:focus-visible { outline: 2px solid var(--mc-accent); outline-offset: 1px; }
+  .wiki__vh {
+    position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0;
+    overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0;
+  }
+
+  /* The language menu. The details element gives the open state, Escape and keyboard operation for free;
+     all this has to add is the popover's position and taking the disclosure marker off. */
+  .wiki__langmenu { position: relative; }
+  .wiki__langmenu > summary {
+    display: inline-flex; align-items: center; gap: .3rem;
+    height: 2rem; padding: 0 .5rem;
+    color: var(--mc-text-muted); border: 1px solid transparent; border-radius: .375rem;
+    font-size: .8125rem; cursor: pointer; list-style: none;
+  }
+  .wiki__langmenu > summary::-webkit-details-marker { display: none; }
+  .wiki__langmenu > summary:hover,
+  .wiki__langmenu[open] > summary { color: var(--mc-text); border-color: var(--mc-border); }
+  .wiki__langmenu > summary:focus-visible { outline: 2px solid var(--mc-accent); outline-offset: 1px; }
+  .wiki__caret {
+    width: 0; height: 0; margin-left: .1rem;
+    border-left: .25rem solid transparent; border-right: .25rem solid transparent;
+    border-top: .3rem solid currentColor;
+  }
+  .wiki__langmenu[open] .wiki__caret { transform: rotate(180deg); }
+  .wiki__langlist {
+    position: absolute; top: calc(100% + .25rem); right: 0; z-index: 2;
+    min-width: 10rem; margin: 0; padding: .25rem; list-style: none;
+    background: var(--mc-surface); border: 1px solid var(--mc-border); border-radius: .5rem;
+  }
+  .wiki__langlist .wiki__lang {
+    display: block; padding: .3rem .5rem; border-radius: .25rem;
+    color: var(--mc-text-muted); font-size: .875rem; white-space: nowrap;
+  }
+  .wiki__langlist a.wiki__lang:hover { color: var(--mc-text); background: var(--mc-bg); text-decoration: none; }
+  .wiki__lang--current { color: var(--mc-text); font-weight: 600; }
+  /* A page's language, shown on a list row only where the site has more than one to tell apart. */
+  .wiki__langchip {
+    margin-left: .4rem; padding: 0 .35rem;
+    color: var(--mc-text-muted); border: 1px solid var(--mc-border); border-radius: .25rem;
+    font-size: .6875rem; text-transform: uppercase; letter-spacing: .03em;
+  }
+
   .wiki__field { margin-bottom: 1rem; }
+  /* Two fields side by side where there is room; the container query below stacks them. */
+  .wiki__row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
   .wiki__field label, .wiki__label {
     display: block; margin-bottom: .3rem;
     font-size: .8125rem; font-weight: 600; color: var(--mc-text-muted);
@@ -166,6 +233,23 @@ export const WIKI_CSS = ICON_CSS + `
   .wiki__preview {
     min-height: 18rem; padding: .6rem .75rem;
     background: var(--mc-surface); border: 1px solid var(--mc-border); border-radius: .5rem;
+  }
+  .wiki__translate { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
+  .wiki__translate .wiki__input { flex: 0 1 14rem; }
+  /* A machine draft is walled off from the form around it: it is a proposal, not a field. */
+  .wiki__machine {
+    margin-top: .75rem; padding: .75rem;
+    background: var(--mc-surface);
+    border: 1px solid var(--mc-border); border-left: 3px solid var(--mc-accent-2);
+    border-radius: .5rem;
+  }
+  .wiki__machine h3 { margin: .25rem 0 .5rem; font-size: 1rem; }
+  .wiki__machine .wiki-icon { margin-right: .3rem; }
+  .wiki__machinebody {
+    max-height: 18rem; margin: 0; padding: .5rem .6rem; overflow: auto;
+    background: var(--mc-bg); border: 1px solid var(--mc-border); border-radius: .375rem;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .8125rem; line-height: 1.5;
+    white-space: pre-wrap; word-break: break-word;
   }
   .wiki__upload { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; margin-top: .5rem; }
   .wiki__upload .wiki__btn { cursor: pointer; }
@@ -255,7 +339,12 @@ export const WIKI_CSS = ICON_CSS + `
        row layout's "flex: 1 1 16rem" would make the search field 16rem tall instead of 16rem wide. */
     .wiki__search { flex: 0 0 auto; }
     /* Side-by-side editing needs width the phone has not got; the preview follows the body instead. */
-    .wiki__editor { grid-template-columns: 1fr; }
+    .wiki__editor, .wiki__row { grid-template-columns: 1fr; }
+    /* Icon only: at this width the language's name is the difference between a title with room to breathe
+       and one broken across three lines. The summary keeps its aria-label, so the control is still named
+       for anyone who cannot see which icon it is. */
+    .wiki__langmenu > summary { padding: 0 .35rem; }
+    .wiki__langcurrent { display: none; }
     .wiki__area, .wiki__preview { min-height: 12rem; }
   }
 `;

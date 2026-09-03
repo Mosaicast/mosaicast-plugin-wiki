@@ -4,6 +4,7 @@
 import { describe, expect, it } from 'vitest';
 import { PLATFORM_API_VERSION } from '@mosaicast/plugin-sdk';
 import manifest from '../../plugin.json';
+import pkg from '../package.json';
 
 /**
  * The manifest is the one file no compiler checks, and the failures it causes are load-time: a version
@@ -70,10 +71,15 @@ describe('plugin.json', () => {
     expect(manifest.homepage).toContain('mosaicast-plugin-wiki');
   });
 
-  it('pins platformApi to the contract this bundle was built against', () => {
-    // An exact major.minor match: a 0.8.x manifest is rejected outright by a 0.9.x host. The credit fields
-    // did not cause this bump -- they are unvalidated and additive; the 0.9 contract did.
-    expect(manifest.platformApi).toBe('0.9.1');
+  it('pins the same contract version in the manifest and the npm dependency', () => {
+    // Four places name the SDK version and nothing but a check compares them. Two are reachable from here;
+    // the two gradle coordinates are compared in `.github/workflows/ci.yml`, which can read a .kts file.
+    // Neither side is a literal: a hardcoded version here is the trap core fell into on this very bump --
+    // a stale literal in a fixture took 26 of that class's 27 cases down with it.
+    // An exact major.minor match: a 0.10.x manifest is rejected outright by a 0.11.x host. The credit
+    // fields did not cause any of these bumps -- they are unvalidated and additive; the contract did.
+    expect(manifest.platformApi).toBe(PLATFORM_API_VERSION);
+    expect(pkg.dependencies['@mosaicast/plugin-sdk']).toBe(PLATFORM_API_VERSION);
   });
 
   it('declares navigation entries the host will accept', () => {

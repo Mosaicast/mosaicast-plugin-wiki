@@ -27,15 +27,8 @@ import org.junit.jupiter.api.Test;
 class WikiPluginTest {
 
     private static FakeSchemaStore schema() {
-        return new FakeSchemaStore("plugin_wiki_")
-                .withEntity("page", "slug", "title", "summary", "markdown", "searchText",
-                        "tags", "status", "createdAt", "updatedAt", "updatedBy", "revisionNo")
-                .withFulltext("page", "searchText")
-                .withEntity("revision", "pageSlug", "revisionNo", "title", "markdown", "comment",
-                        "author", "createdAt")
-                .withEntity("link", "fromSlug", "toSlug", "kind", "label")
-                .withEntity("source", "pageSlug", "label", "url", "note", "accessedAt", "position")
-                .withEntity("media", "pageSlug", "url", "kind", "provider", "caption", "position", "uploadRef");
+        // Built from plugin.json, never transcribed -- see WikiSchemaFixture for why.
+        return WikiSchemaFixture.schema();
     }
 
 

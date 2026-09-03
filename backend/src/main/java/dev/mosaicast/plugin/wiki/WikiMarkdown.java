@@ -40,9 +40,8 @@ final class WikiMarkdown {
     /** Markdown link, excluding images (the {@code !} is consumed by {@link #IMAGE} first). */
     private static final Pattern LINK = Pattern.compile("(?<!!)\\[([^\\]]+)]\\(([^)\\s]+)(?:\\s+\"[^\"]*\")?\\)");
 
-    /** A {@code ## Sources} heading, in either shipped UI language, through to the next heading. */
-    private static final Pattern SOURCES_SECTION =
-            Pattern.compile("(?im)^#{1,6}\\s*(?:sources|quellen)\\s*$(.*?)(?=^#{1,6}\\s|\\z)", Pattern.DOTALL);
+    /** The headings a site recognises, when nobody configured any. English and German ship with the shell. */
+    static final List<String> DEFAULT_SOURCE_HEADINGS = List.of("sources", "quellen");
 
     /** One bullet in that section: {@code - [label](url) - note}. */
     private static final Pattern SOURCE_ITEM =
@@ -72,6 +71,14 @@ final class WikiMarkdown {
 
     /** One image or file the page shows. Exactly one of {@code url} and {@code uploadRef} is set. */
     record Media(String url, String uploadRef, String kind, String provider, String caption) {}
+
+    /**
+     * A page's Sources section.
+     *
+     * @param heading the heading text as the author wrote it, so the reader can strip exactly this section
+     * @param items   the cited sources, in the order listed
+     */
+    record Sources(String heading, List<Source> items) {}
 
     /** One entry of the page's Sources section. */
     record Source(String label, String url, String note) {}
@@ -157,27 +164,59 @@ final class WikiMarkdown {
     }
 
     /**
-     * The page's Sources section, if it has one.
+     * The page's Sources section: which heading opened it, and what it listed.
+     *
+     * <p><strong>The heading is returned, not just the items.</strong> The reader strips the body's own
+     * copy of this section because the structured rows replace it, and it used to do that by carrying its
+     * own copy of the vocabulary — a second list to keep in step with this one, and a third the day a site
+     * adds a language. Handing back the heading that actually matched removes the browser's need to know
+     * the vocabulary at all, and makes it impossible for the two sides to disagree about which of two
+     * candidate headings on one page was the real one.
      *
      * @param markdown the page body; may be {@code null}
-     * @return the cited sources, in the order listed
+     * @param headings the headings this site recognises, lower-cased; empty falls back to
+     *                 {@link #DEFAULT_SOURCE_HEADINGS}
+     * @return the section, or {@code null} when the body has none
      */
-    static List<Source> sources(String markdown) {
-        List<Source> sources = new ArrayList<>();
-        if (markdown == null) {
-            return sources;
+    static Sources sources(String markdown, List<String> headings) {
+        if (markdown == null || markdown.isBlank()) {
+            return null;
         }
-        Matcher section = SOURCES_SECTION.matcher(markdown);
+        Matcher section = sectionPattern(headings).matcher(markdown);
         if (!section.find()) {
-            return sources;
+            return null;
         }
-        Matcher items = SOURCE_ITEM.matcher(section.group(1));
-        while (items.find()) {
-            String note = items.group(3) == null ? null : items.group(3).trim();
-            sources.add(new Source(items.group(1).trim(), items.group(2).trim(),
+        List<Source> items = new ArrayList<>();
+        Matcher entries = SOURCE_ITEM.matcher(section.group(2));
+        while (entries.find()) {
+            String note = entries.group(3) == null ? null : entries.group(3).trim();
+            items.add(new Source(entries.group(1).trim(), entries.group(2).trim(),
                     note == null || note.isEmpty() ? null : note));
         }
-        return sources;
+        return new Sources(section.group(1).trim(), items);
+    }
+
+    /**
+     * Builds the section pattern for a site's own heading vocabulary.
+     *
+     * <p>Every heading is {@link Pattern#quote(String) quoted}: this list comes from a config field a
+     * podcaster edits, so a heading containing {@code (} or {@code *} must be a heading and not a pattern.
+     * Group 1 is the heading as the author wrote it, group 2 is everything up to the next heading.
+     *
+     * @param headings the configured headings; empty or {@code null} falls back to the shipped pair
+     * @return a compiled pattern
+     */
+    private static Pattern sectionPattern(List<String> headings) {
+        List<String> effective = headings == null || headings.isEmpty() ? DEFAULT_SOURCE_HEADINGS : headings;
+        StringBuilder alternation = new StringBuilder();
+        for (String heading : effective) {
+            if (alternation.length() > 0) {
+                alternation.append('|');
+            }
+            alternation.append(Pattern.quote(heading));
+        }
+        return Pattern.compile("(?im)^#{1,6}[ \\t]*(" + alternation + ")[ \\t]*$(.*?)(?=^#{1,6}[ \\t]|\\z)",
+                Pattern.DOTALL);
     }
 
     /**

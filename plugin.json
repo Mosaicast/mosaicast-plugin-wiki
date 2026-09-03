@@ -1,7 +1,7 @@
 {
   "id": "wiki",
   "version": "0.1.0",
-  "platformApi": "0.9.1",
+  "platformApi": "0.12.0",
   "name": "Wiki",
   "license": "AGPL-3.0-or-later",
   "author": "The Mosaicast Authors",
@@ -79,6 +79,9 @@
         "searchText": "text:fulltext",
         "tags": "string:indexed",
         "status": "string:indexed",
+        "sourcesHeading": "string",
+        "locale": "string:indexed",
+        "translationOf": "string:indexed",
         "createdAt": "timestamp",
         "updatedAt": "timestamp:indexed",
         "updatedBy": "string",
@@ -139,6 +142,10 @@
       "application/pdf"
     ]
   },
+  "external": {
+    "kinds": ["translation"],
+    "usedBy": "podcaster"
+  },
   "tags": {
     "readsVocabulary": true,
     "writesEpisodes": false
@@ -157,6 +164,11 @@
     "revisionsKept": {
       "type": "number",
       "default": 50,
+      "editableBy": "podcaster"
+    },
+    "sourceHeadings": {
+      "type": "string",
+      "default": "sources,quellen",
       "editableBy": "podcaster"
     },
     "blobGraceMinutes": {

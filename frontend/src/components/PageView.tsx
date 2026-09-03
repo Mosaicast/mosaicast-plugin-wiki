@@ -6,6 +6,7 @@ import type { PluginContext } from '@mosaicast/plugin-sdk';
 import { renderPage, stripSourcesSection, type TocEntry } from '../markdown';
 import { routeHref, routePath, type WikiRoute } from '../routes';
 import type { LinkRow, PageRow, PageSummary, SourceRow } from '../types';
+import { localeName, variantsOf } from '../languages';
 import type { PluginI18n } from '../i18n';
 import { Icon } from '../icons';
 import { EpisodeCard, useEpisodeCards } from './EpisodeCards';
@@ -103,7 +104,9 @@ export function PageView({ ctx, i18n, slug, index, go }: PageViewProps) {
       return { html: '', toc: [] as TocEntry[], plainFirstParagraph: '' };
     }
     // Sources are rendered from the extracted rows below, so drop the body's own copy of that section.
-    const body = sources.length > 0 ? stripSourcesSection(page.markdown ?? '') : (page.markdown ?? '');
+    const body = sources.length > 0
+      ? stripSourcesSection(page.markdown ?? '', page.sourcesHeading)
+      : (page.markdown ?? '');
     return renderPage(body, {
       hasPage: (target) => Object.prototype.hasOwnProperty.call(index, target),
       episodeHref: (episode, seconds) =>
@@ -162,6 +165,13 @@ export function PageView({ ctx, i18n, slug, index, go }: PageViewProps) {
 
   const tags = (page.tags ?? '').split(',').filter(Boolean);
 
+  // The other languages this page exists in. Read off the `index` projection, which holds published pages
+  // only -- so an unpublished translation cannot be advertised here to anyone, editor or not.
+  const variants = variantsOf(slug, page.translationOf ?? null, index);
+  // What the closed menu shows. A page can be in a group without naming its own language (an older row),
+  // so fall back to this page's own entry, and then to nothing rather than to a wrong language.
+  const current = variants.find((variant) => variant.current);
+
   // A lead paragraph, the way an encyclopedia article opens: the summary, above the contents.
   //
   // Shown **only when the summary was written**, not when the backend derived it from the body. The
@@ -178,26 +188,79 @@ export function PageView({ ctx, i18n, slug, index, go }: PageViewProps) {
     : rendered.toc;
 
   return (
-    <article>
-      <h1 className="wiki__title">{page.title}</h1>
+    // `lang` is the cheapest thing this field buys and the one with the widest reach: a screen reader picks
+    // the right voice, and a browser stops offering to translate a page into the language it is already in.
+    <article lang={page.locale ?? undefined}>
+      {/* The controls come before the heading because they FLOAT: a float only shortens the line boxes of
+          content after it in source order, which is what pins them to the title's first line and lets a
+          long title wrap underneath rather than pushing them down. */}
+      <div className="wiki__titlerow">
+        <div className="wiki__pagetools">
+          {variants.length > 0 && (
+            /* A `<details>` rather than a button and a listbox: inside a shadow root that buys keyboard
+               support, Escape, and the open/closed state a screen reader reads, with no click-outside
+               handler and no focus management of our own to get wrong. */
+            <details className="wiki__langmenu">
+              <summary aria-label={i18n.t('page.languages')} title={i18n.t('page.languages')}>
+                <Icon name="translate" />
+                <span className="wiki__langcurrent">{localeName(ctx, page.locale) || current?.title}</span>
+                <span className="wiki__caret" aria-hidden="true" />
+              </summary>
+              <ul className="wiki__langlist">
+                {variants.map((variant) => (
+                  <li key={variant.slug}>
+                    {variant.current ? (
+                      <span className="wiki__lang wiki__lang--current" aria-current="page">
+                        {localeName(ctx, variant.locale) || variant.title}
+                      </span>
+                    ) : (
+                      <a
+                        className="wiki__lang"
+                        lang={variant.locale ?? undefined}
+                        hrefLang={variant.locale ?? undefined}
+                        href={routeHref({ view: 'page', slug: variant.slug })}
+                        onClick={go({ view: 'page', slug: variant.slug })}
+                      >
+                        {localeName(ctx, variant.locale) || variant.title}
+                      </a>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
+
+          {/* Icon-only, so the label moves out of sight rather than out of the accessibility tree: `Icon`
+              is always aria-hidden, and a button announced as nothing is a button nobody can use. */}
+          <a
+            className="wiki__iconbtn"
+            href={routeHref({ view: 'history', slug })}
+            onClick={go({ view: 'history', slug })}
+            title={i18n.t('page.history')}
+          >
+            <Icon name="history" />
+            <span className="wiki__vh">{i18n.t('page.history')}</span>
+          </a>
+          {mayEdit && (
+            <a
+              className="wiki__iconbtn"
+              href={routeHref({ view: 'edit', slug })}
+              onClick={go({ view: 'edit', slug })}
+              title={i18n.t('page.edit')}
+            >
+              <Icon name="edit" />
+              <span className="wiki__vh">{i18n.t('page.edit')}</span>
+            </a>
+          )}
+        </div>
+        <h1 className="wiki__title">{page.title}</h1>
+      </div>
+
       <p className="wiki__meta">
         {page.updatedAt
           ? i18n.t('page.updated', { when: new Date(page.updatedAt).toLocaleDateString(ctx.locale.current()) })
           : null}
         {page.revisionNo ? ` · ${i18n.t('page.revision', { n: String(page.revisionNo) })}` : null}
-      </p>
-
-      <p className="wiki__pageactions">
-        <a href={routeHref({ view: 'history', slug })} onClick={go({ view: 'history', slug })}>
-          <Icon name="history" />
-          {i18n.t('page.history')}
-        </a>
-        {mayEdit && (
-          <a href={routeHref({ view: 'edit', slug })} onClick={go({ view: 'edit', slug })}>
-            <Icon name="edit" />
-            {i18n.t('page.edit')}
-          </a>
-        )}
       </p>
 
       {tags.length > 0 && (
