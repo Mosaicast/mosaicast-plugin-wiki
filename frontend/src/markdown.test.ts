@@ -3,7 +3,9 @@
 
 import { describe, expect, it } from 'vitest';
 import {
+  formatImage,
   formatTimestamp,
+  imageTokenAt,
   parseImageAttrs,
   parseTimestamp,
   renderPage,
@@ -275,5 +277,53 @@ describe('image attributes', () => {
 
     expect(html).not.toContain('<img');
     expect(html).toContain('A squid');
+  });
+});
+
+describe('editing an image already in the body', () => {
+  const body = 'Before.\n\n![A squid](blob:abc){width=320 align=right}\n\nAfter.';
+
+  it('finds the image the caret is sitting in', () => {
+    // The stand-in for right-clicking an image: a textarea has text, not images, so the affordance has to
+    // be the token the caret is already inside.
+    const found = imageTokenAt(body, body.indexOf('squid'))!;
+
+    expect(found).toMatchObject({ alt: 'A squid', target: 'blob:abc', width: '320px', align: 'right' });
+    expect(body.slice(found.start, found.end)).toBe('![A squid](blob:abc){width=320 align=right}');
+  });
+
+  it('counts the caret at either edge of the token, including just after inserting one', () => {
+    const start = body.indexOf('![A squid');
+    const end = start + '![A squid](blob:abc){width=320 align=right}'.length;
+
+    expect(imageTokenAt(body, start)).not.toBeNull();
+    expect(imageTokenAt(body, end)).not.toBeNull();
+    expect(imageTokenAt(body, 0)).toBeNull();
+  });
+
+  it('writes an image back out, and omits the block when there is nothing to say', () => {
+    expect(formatImage({ alt: 'A squid', target: 'blob:abc' })).toBe('![A squid](blob:abc)');
+    expect(formatImage({ alt: 'A squid', target: 'blob:abc', width: null, align: null }))
+      .toBe('![A squid](blob:abc)');
+    expect(formatImage({ alt: 'A squid', target: 'blob:abc', width: '320px', align: 'right' }))
+      .toBe('![A squid](blob:abc){width=320px align=right}');
+    expect(formatImage({ alt: 'A squid', target: 'blob:abc', align: 'center' }))
+      .toBe('![A squid](blob:abc){align=center}');
+  });
+
+  it('round-trips: what it reads it can write back unchanged', () => {
+    const found = imageTokenAt(body, body.indexOf('squid'))!;
+
+    expect(formatImage(found)).toBe('![A squid](blob:abc){width=320px align=right}');
+    // …and reading that again gives the same thing, so repeated edits do not drift.
+    expect(imageTokenAt(formatImage(found), 3)).toMatchObject({ width: '320px', align: 'right' });
+  });
+
+  it('finds an unsized image too, so options can be added to one that has none', () => {
+    const plain = 'Text ![Plain](blob:xyz) more.';
+
+    expect(imageTokenAt(plain, plain.indexOf('Plain'))).toMatchObject({
+      alt: 'Plain', target: 'blob:xyz', width: null, align: null,
+    });
   });
 });

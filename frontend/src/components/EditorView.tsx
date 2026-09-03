@@ -3,7 +3,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from 'react';
 import { isPluginApiError, type PluginContext } from '@mosaicast/plugin-sdk';
-import { formatTimestamp, parseTimestamp, renderPage } from '../markdown';
+import { formatImage, formatTimestamp, imageTokenAt, parseImageAttrs, parseTimestamp, renderPage } from '../markdown';
 import { routeHref, routePath, toSlug, type WikiRoute } from '../routes';
 import {
   ASSET_PREFIX,
@@ -97,6 +97,7 @@ export function EditorView({ ctx, i18n, slug, index, go }: EditorViewProps) {
   const [quota, setQuota] = useState<{ usedBytes: number; quotaBytes: number; maxFileBytes: number } | null>(null);
   const [vocabulary, setVocabulary] = useState<{ tag: string; label: string }[]>([]);
   const bodyRef = useRef<HTMLTextAreaElement>(null);
+  const previewRef = useRef<HTMLDivElement>(null);
   const pollRef = useRef<number | null>(null);
 
   const targetSlug = isNew ? newSlug : slug;
@@ -216,6 +217,102 @@ export function EditorView({ ctx, i18n, slug, index, go }: EditorViewProps) {
       }),
     [ctx, markdown, index],
   );
+
+  // The image the caret is in, if any. **A textarea has no image to right-click** — it has text — so the
+  // affordance that does work is acting on the token the caret is already inside. Tracked on every
+  // interaction with the body rather than polled, so the button appears the moment the caret lands in one.
+  const [caretImage, setCaretImage] = useState<ReturnType<typeof imageTokenAt>>(null);
+  // The width box keeps what was typed, not what was parsed. Feeding the parsed value back would turn "32"
+  // into "32px" between two keystrokes and the next character would land after the unit.
+  const [caretWidthText, setCaretWidthText] = useState('');
+  const caretImageStart = useRef<number | null>(null);
+
+  const trackCaret = useCallback(() => {
+    const area = bodyRef.current;
+    const found = area ? imageTokenAt(area.value, area.selectionStart ?? 0) : null;
+    setCaretImage(found);
+    // Reload the box only when the caret moved to a *different* image, or it would overwrite what is
+    // being typed into it on every keystroke.
+    if ((found?.start ?? null) !== caretImageStart.current) {
+      caretImageStart.current = found?.start ?? null;
+      setCaretWidthText(found?.width ?? '');
+    }
+  }, []);
+
+  /** Rewrites the image under the caret with new options, leaving its alt text and target alone. */
+  const applyToCaretImage = (next: { width: string | null; align: '' | 'left' | 'center' | 'right' }) => {
+    const area = bodyRef.current;
+    if (!area || !caretImage) {
+      return;
+    }
+    const replacement = formatImage({
+      alt: caretImage.alt,
+      target: caretImage.target,
+      width: next.width,
+      align: next.align || null,
+    });
+    const value = area.value.slice(0, caretImage.start) + replacement + area.value.slice(caretImage.end);
+    setMarkdown(value);
+    // The token's new span is known right here, so record it **synchronously**. Deriving it inside the
+    // rAF below made the next edit slice against a stale `end` and append a second attribute block
+    // instead of replacing the first — and typing a width is several edits in a row. rAF is also
+    // throttled in a backgrounded tab, which makes it the wrong place for anything correctness needs.
+    setCaretImage({
+      ...caretImage,
+      end: caretImage.start + replacement.length,
+      width: next.width,
+      align: next.align || null,
+    });
+    // Cosmetic, and only cosmetic: put the caret back inside the token so the box stays open under the
+    // hand using it. `caretImageStart` is left alone — it is still the same image.
+    requestAnimationFrame(() => {
+      area.focus();
+      area.selectionStart = area.selectionEnd = caretImage.start + replacement.length;
+    });
+  };
+
+  /**
+   * Keeps the preview beside the body: the same height, and scrolled to the same place.
+   *
+   * Two halves. The **height** is mirrored because the textarea is user-resizable — a fixed height in CSS
+   * gives them the same height until someone drags the handle, and then they never match again. The
+   * **scroll** is proportional rather than caret-anchored: mapping a caret offset to the element it became
+   * would mean the renderer handing back a source map, and a ratio is right wherever the two halves have
+   * roughly the same shape, which for a wiki page they do. The browser scrolls the textarea to follow the
+   * caret on its own, so typing near the bottom pulls the preview along without a keystroke listener.
+   *
+   * One direction only, editor to preview. Syncing both ways means each one's programmatic scroll wakes
+   * the other's handler, and the two fight over the last pixel.
+   */
+  useEffect(() => {
+    const area = bodyRef.current;
+    const pane = previewRef.current;
+    if (!area || !pane) {
+      return;
+    }
+    const syncScroll = () => {
+      const room = area.scrollHeight - area.clientHeight;
+      const previewRoom = pane.scrollHeight - pane.clientHeight;
+      // Nothing to scroll on either side is the normal state of a short page, not an error.
+      if (room <= 0 || previewRoom <= 0) {
+        return;
+      }
+      pane.scrollTop = (area.scrollTop / room) * previewRoom;
+    };
+    const mirrorHeight = () => {
+      pane.style.height = `${area.getBoundingClientRect().height}px`;
+    };
+    area.addEventListener('scroll', syncScroll, { passive: true });
+    // Guarded rather than assumed: every browser this ships to has it, but a missing global thrown from a
+    // render is what the host's error boundary turns into a blank tile, and the editor still works without
+    // the mirror -- the two panes simply stop matching after a manual resize.
+    const resize = typeof ResizeObserver === 'function' ? new ResizeObserver(mirrorHeight) : null;
+    resize?.observe(area);
+    return () => {
+      area.removeEventListener('scroll', syncScroll);
+      resize?.disconnect();
+    };
+  }, [loaded]);
 
   /** Inserts text at the caret, so an upload lands where the author was typing. */
   const insertAtCaret = useCallback((snippet: string) => {
@@ -633,7 +730,13 @@ export function EditorView({ ctx, i18n, slug, index, go }: EditorViewProps) {
             ref={bodyRef}
             className="wiki__area"
             value={markdown}
-            onChange={(event) => setMarkdown(event.target.value)}
+            onChange={(event) => {
+              setMarkdown(event.target.value);
+              trackCaret();
+            }}
+            onKeyUp={trackCaret}
+            onClick={trackCaret}
+            onSelect={trackCaret}
             rows={20}
             spellCheck
           />
@@ -667,7 +770,42 @@ export function EditorView({ ctx, i18n, slug, index, go }: EditorViewProps) {
                 {i18n.t('editor.insertLibrary')}
               </button>
             )}
+            {ctx.blobs && (
+              <label className="wiki__btn wiki__btn--ghost">
+                <Icon name="upload" />
+                {upload.busy ? i18n.t('editor.uploading') : i18n.t('editor.addImage')}
+                <input type="file" accept="image/*" hidden onChange={onPickFile} disabled={upload.busy} />
+              </label>
+            )}
           </div>
+
+          {caretImage && (
+            <div className="wiki__caretimg">
+              <p className="wiki__hint">{i18n.t('editor.image.atCaret', { alt: caretImage.alt || '—' })}</p>
+              <ImageOptions
+                i18n={i18n}
+                width={caretWidthText}
+                align={caretImage.align ?? ''}
+                onWidth={(value) => {
+                  setCaretWidthText(value);
+                  const parsed = value.trim() === '' ? null : parseImageAttrs(`width=${value.trim()}`).width;
+                  // A half-typed width ("32" on the way to "320") parses; nonsense does not, and rewriting
+                  // the token with it would silently drop the width the author is still typing.
+                  if (value.trim() === '' || parsed !== null) {
+                    applyToCaretImage({ width: parsed, align: caretImage.align ?? '' });
+                  }
+                }}
+                onAlign={(value) =>
+                  applyToCaretImage({
+                    width: caretWidthText.trim() === ''
+                      ? null
+                      : parseImageAttrs(`width=${caretWidthText.trim()}`).width,
+                    align: value,
+                  })
+                }
+              />
+            </div>
+          )}
 
           {picker && (
             <InsertPicker
@@ -683,32 +821,27 @@ export function EditorView({ ctx, i18n, slug, index, go }: EditorViewProps) {
             />
           )}
 
-          {ctx.blobs && (
-            <div className="wiki__upload">
-              <label className="wiki__btn wiki__btn--ghost">
-                <Icon name="upload" />
-                {upload.busy ? i18n.t('editor.uploading') : i18n.t('editor.addImage')}
-                <input type="file" accept="image/*" hidden onChange={onPickFile} disabled={upload.busy} />
-              </label>
-              {quota && (
-                <span className="wiki__hint">
-                  {i18n.t('editor.quota', {
-                    used: i18n.bytes(quota.usedBytes),
-                    total: i18n.bytes(quota.quotaBytes),
-                    max: i18n.bytes(quota.maxFileBytes),
-                  })}
-                </span>
-              )}
-              {upload.error && <p className="wiki__error">{upload.error}</p>}
-            </div>
+          {quota && (
+            <p className="wiki__hint">
+              {i18n.t('editor.quota', {
+                used: i18n.bytes(quota.usedBytes),
+                total: i18n.bytes(quota.quotaBytes),
+                max: i18n.bytes(quota.maxFileBytes),
+              })}
+            </p>
           )}
+          {upload.error && <p className="wiki__error">{upload.error}</p>}
         </div>
 
         <div className="wiki__field">
           <span className="wiki__label">{i18n.t('editor.preview')}</span>
           {/* Sanitised in renderPage, exactly as the reader does it — a preview must not be the one place
               author markup reaches the DOM unfiltered. */}
-          <div className="wiki__body wiki__preview" dangerouslySetInnerHTML={{ __html: preview.html }} />
+          <div
+            ref={previewRef}
+            className="wiki__body wiki__preview"
+            dangerouslySetInnerHTML={{ __html: preview.html }}
+          />
         </div>
       </div>
 
@@ -818,6 +951,58 @@ function SaveStatus({
 }
 
 /**
+ * Size and placement for an image, without anyone having to know the syntax.
+ *
+ * The defaults are the behaviour you get by writing nothing — full column width, no float — so leaving the
+ * box alone produces exactly the token the plugin produced before this existed.
+ */
+function ImageOptions({
+  i18n,
+  width,
+  align,
+  onWidth,
+  onAlign,
+}: {
+  i18n: PluginI18n;
+  width: string;
+  align: '' | 'left' | 'center' | 'right';
+  onWidth(value: string): void;
+  onAlign(value: '' | 'left' | 'center' | 'right'): void;
+}) {
+  // Shown as you type rather than on submit: the field is three characters long and a wrong one silently
+  // producing a full-width image is the confusion this whole control exists to remove.
+  const bad = width.trim() !== '' && parseImageAttrs(`width=${width.trim()}`).width === null;
+
+  return (
+    <div className="wiki__imgopts">
+      <label>
+        {i18n.t('editor.image.width')}
+        <input
+          className="wiki__input"
+          value={width}
+          placeholder={i18n.t('editor.image.widthHint')}
+          onChange={(event) => onWidth(event.target.value)}
+        />
+      </label>
+      <label>
+        {i18n.t('editor.image.align')}
+        <select
+          className="wiki__input"
+          value={align}
+          onChange={(event) => onAlign(event.target.value as '' | 'left' | 'center' | 'right')}
+        >
+          <option value="">{i18n.t('editor.image.alignDefault')}</option>
+          <option value="left">{i18n.t('editor.image.alignLeft')}</option>
+          <option value="center">{i18n.t('editor.image.alignCenter')}</option>
+          <option value="right">{i18n.t('editor.image.alignRight')}</option>
+        </select>
+      </label>
+      {bad && <p className="wiki__error">{i18n.t('editor.image.badWidth')}</p>}
+    </div>
+  );
+}
+
+/**
  * The insert pickers: a page, an episode, or a file already in the library.
  *
  * **A slug is not something to know by heart.** `[[the-kraken]]` and `[[episode:s01e02@12:04]]` are terse to
@@ -843,6 +1028,8 @@ function InsertPicker({
 }) {
   const [query, setQuery] = useState('');
   const [stamp, setStamp] = useState('');
+  const [width, setWidth] = useState('');
+  const [align, setAlign] = useState<'' | 'left' | 'center' | 'right'>('');
   const [library, setLibrary] = useState<{ ref: string; name: string; mime: string }[]>([]);
 
   useEffect(() => {
@@ -916,6 +1103,9 @@ function InsertPicker({
         </button>
       </div>
       {stampBad && <p className="wiki__error">{i18n.t('editor.pick.badStamp')}</p>}
+      {kind === 'library' && (
+        <ImageOptions i18n={i18n} width={width} align={align} onWidth={setWidth} onAlign={setAlign} />
+      )}
 
       <ul className="wiki__pickerlist">
         {kind === 'page' &&
@@ -948,7 +1138,19 @@ function InsertPicker({
         {kind === 'library' &&
           files.map((file) => (
             <li key={file.ref}>
-              <button type="button" onClick={() => onInsert(`![${file.name}](blob:${file.ref})`)}>
+              <button
+                type="button"
+                onClick={() =>
+                  onInsert(
+                    formatImage({
+                      alt: file.name,
+                      target: `blob:${file.ref}`,
+                      width: parseImageAttrs(`width=${width.trim()}`).width,
+                      align: align || null,
+                    }),
+                  )
+                }
+              >
                 {ctx.blobs && file.mime.startsWith('image/') && (
                   <img className="wiki__thumb" src={ctx.blobs.urlFor(file.ref)} alt="" />
                 )}

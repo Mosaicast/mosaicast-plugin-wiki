@@ -65,8 +65,12 @@ under a name, so the same picture is uploaded once and reused everywhere.
 
 `{width=…}` is markdown's missing image control: `320` or `320px` for pixels, `50%` for a share of the
 column, and `align=left|center|right`. Without it an image fills the column, because most uploads are wider
-than it. The heading a page opens its sources with is a setting, so a wiki written in a language the shell
-has never shipped can still have its sources extracted.
+than it — and it is not syntax anyone has to remember: the library picker has a width and placement box,
+and putting the cursor in an image already in the body opens the same box for that one.
+
+The body and the preview are the same height and scroll together, so the two halves stay level as you write.
+The heading a page opens its sources with is a setting, so a wiki written in a language the shell has never
+shipped can still have its sources extracted.
 
 ## Build & test
 ```bash

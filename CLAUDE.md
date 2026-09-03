@@ -26,10 +26,9 @@ working tree or `mosaicast-plugin-sample`, the latter win.
 Every gap this repo filed is **closed** (core#81/#82, [core#89], SDK 0.12.0) — filing one works, prefer it to
 a workaround. The generic contract is in the **writing-a-mosaicast-plugin** skill and not repeated here;
 what is particular to this repo:
-- **`ctx.blobs` orphans are ours to collect.** The ingest tick deletes every uploaded file nothing points
-  at — a page body, an unapplied draft, or a media-library entry. Nothing else collects them.
-- **`ctx.links.episode(slug, { t })` / `.feed(slug, …)`** — never hardcode `/episodes/…` or `/feeds/…`.
-  Core ships its **own share dialog** since 0.6.12 — do not build a second.
+- **`ctx.blobs` orphans are ours to collect** — the tick deletes every file nothing points at (a body, an
+  unapplied draft, a library entry). **`ctx.links.episode(slug, { t })` / `.feed(…)`** — never hardcode
+  `/episodes/…`. Core has shipped its **own share dialog** since 0.6.12; do not build a second.
 - **The `?t=` grammar is shared** (§6.4): `WikiMarkdown.seconds` and `markdown.ts#parseTimestamp` are the
   *third and fourth* implementations of core's, same case table (`754`, `12:04`, `1:02:03`, `1h02m03s`,
   `90m`; bounded fields, 24 h cap, unreadable dropped). Change all four together or none.
@@ -63,10 +62,9 @@ cd ../mosaicast-core && dev/instance.sh up --plugins --admin  # :8081, fleeting 
 #   dev-login: POST /api/auth/dev-login?role=podcaster|fan|admin (prime /api/meta, send X-XSRF-TOKEN)
 dev/instance.sh status | logs [-f] | psql | down
 ```
-`instance.sh` replaced `screenshots.sh` and needs `--plugins` (the default loads none). Disposable, seeded
-only with the fictional sample feed. Core loads plugins **at startup only**: a rebuilt backend needs a
-restart, a rebuilt bundle does not. Capture light and dark at 375×667, 768×1024, 1280×800 into
-`assets/screenshots/` and put them in the PR.
+`instance.sh` replaced `screenshots.sh` and needs `--plugins`. Disposable, seeded only with the sample
+feed. Core loads plugins **at startup only**: a rebuilt backend needs a restart, a rebuilt bundle does not.
+Capture light and dark at 375×667, 768×1024, 1280×800 into `assets/screenshots/` for the PR.
 
 **Six ways this loop lies to you, all seen in practice:**
 1. **`up` accepts a stale instance.** Its health check answers from an app already running, so a rebuilt
@@ -158,12 +156,17 @@ the author typed reaches the output** — a width is parsed to a number and writ
 alignment must be one of three words, the rest is dropped — which is what makes emitting a `style` attribute
 safe. It sits after the `)`, so the backend's image pattern ignores it.
 
-The editor's **pickers** are why nobody types a slug: pages from the `index` projection, episodes from
-`ctx.episodes` + `ctx.episodeLabels`, and a timestamp through `parseTimestamp` rather than a fifth
-implementation of the grammar. Every upload is also filed in the **media library** as a client-written
-`asset:<ref>` doc; the body still says `blob:<ref>`, because a ref is identity and a name is a label.
-**That entry is what keeps the file alive** — it is the only reference between uploading and placing, so
-without it the orphan sweep deletes the upload an hour later.
+The editor never asks anyone to remember `{…}`: the library picker carries a width/placement box, and the
+caret sitting in an image opens the same box for it — a textarea has no image to right-click, so the token
+under the caret is the affordance that works. **Record the token's new span synchronously**; deriving it in
+the `requestAnimationFrame` that repositions the caret made a second edit slice against a stale end and
+append a block instead of replacing one, and rAF is throttled in a background tab.
+
+The **pickers** are why nobody types a slug: pages from `index`, episodes from `ctx.episodes` +
+`ctx.episodeLabels`, timestamps through `parseTimestamp`. Every upload is filed in the **media library** as
+a client-written `asset:<ref>` doc; the body still says `blob:<ref>`, because a ref is identity and a name
+is a label. **That entry is what keeps the file alive** — the only reference between uploading and placing,
+so without it the orphan sweep deletes the upload an hour later.
 
 `WikiMarkdown` (backend) finds these with **regexes, not a parser** — a real parser would mean a shaded JAR
 and PF4J classloading. The browser parses properly for rendering; anything the backend misses degrades to a

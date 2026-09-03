@@ -29,6 +29,13 @@ warned about, and every entry that moves it says so.
   same picture is uploaded once rather than once per page. The name is a label; a page body still carries
   `blob:<ref>`, because a ref is the file's identity and a name is something someone renames. The orphan
   sweep counts a library entry as a reference, so a file uploaded and not yet placed on a page survives.
+- **Size and placement without the syntax.** The library picker carries a width and placement box, and
+  putting the cursor in an image already in the body opens the same box for that one — a textarea has no
+  image to right-click, so the token under the cursor is the affordance that works. The defaults produce
+  exactly what writing nothing produced before.
+- **The body and the preview are the same height, scroll together, and stay matched** when the body is
+  resized. The scroll is proportional rather than caret-anchored: mapping a caret offset to the element it
+  became would need the renderer to hand back a source map.
 - **Insert buttons for wiki links and episode citations.** Pages and episodes are chosen from a searchable
   list by title — an episode slug is not something anyone should have to know — with an optional timestamp
   on a citation, read with the same grammar the rest of the site uses.
