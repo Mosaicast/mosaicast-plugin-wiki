@@ -42,6 +42,17 @@ while missing `home`.
 original entry was wrong — it said 19, measured against a local `master` that was itself 19 commits stale.
 `git fetch` before quoting a distance.
 
+### 3.5 Tag v0.2.0 once #19 merges
+The branch bumps the manifest to **0.2.0** (added features, no breaking change, `platformApi` unchanged at
+0.12.0). `CHANGELOG.md` carries the entry as *unreleased*; date it, `git tag v0.2.0` on `master`, publish
+the GitHub release, and the workflow attaches `plugin.tgz` with its digest.
+
+**Do not skip the bump on a feature PR again.** #19 was reviewed for two rounds still declaring `0.1.0`,
+which is the version already tagged and published — merging it would have put different code on `master`
+under a version an operator can already pin. Worth noting that `release.yml` would *not* have caught it:
+its guard compares the tag against the manifest, and `v0.1.0` against a `0.1.0` manifest agrees. What
+stops a duplicate is git refusing to move an existing tag, which is luck rather than a check.
+
 ### ~~3.2 The plugin has never been released~~ — done
 **v0.1.0** is tagged and published with `plugin.tgz` attached, so install-by-spec is exercised end to end
 for the first time. `scripts/set-version.sh` moves the plugin's own version in all three files that carry it

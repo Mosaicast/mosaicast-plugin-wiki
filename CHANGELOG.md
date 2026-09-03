@@ -16,6 +16,11 @@ warned about, and every entry that moves it says so.
 
 ## [Unreleased]
 
+## [0.2.0] — unreleased
+
+Authoring, mostly: the editor stopped asking anyone to memorise syntax. `platformApi` is unchanged at
+**0.12.0**, so this is a drop-in replacement for 0.1.0 on the same host.
+
 ### Added
 
 - **Image width and placement**, as an attribute suffix on the existing syntax:
@@ -102,5 +107,6 @@ a silently broken image link is not.
   MOSAICAST_PLUGINS=Mosaicast/mosaicast-plugin-wiki@v0.1.0#sha256:<digest from the release notes>
   ```
 
-[Unreleased]: https://github.com/Mosaicast/mosaicast-plugin-wiki/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/Mosaicast/mosaicast-plugin-wiki/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/Mosaicast/mosaicast-plugin-wiki/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/Mosaicast/mosaicast-plugin-wiki/releases/tag/v0.1.0

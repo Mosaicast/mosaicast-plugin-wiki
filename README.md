@@ -91,7 +91,7 @@ From a release, an operator can skip all of that and install by spec — GitHub 
 there is no registry to register with:
 
 ```bash
-MOSAICAST_PLUGINS="Mosaicast/mosaicast-plugin-wiki@v0.1.0#sha256:<digest from the release notes>"
+MOSAICAST_PLUGINS="Mosaicast/mosaicast-plugin-wiki@v0.2.0#sha256:<digest from the release notes>"
 ```
 
 Each release attaches `plugin.tgz` and publishes its SHA-256, so the spec above is pinned and auditable —
