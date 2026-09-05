@@ -13,7 +13,7 @@ import {
   type MockSchemaClient,
 } from '@mosaicast/plugin-sdk/testing';
 import { WikiPage } from './WikiPage';
-import { flush } from '../test-utils';
+import { flush, mockUser } from '../test-utils';
 import { clearTranslation, peekTranslation } from '../translate';
 
 const KRAKEN = {
@@ -33,7 +33,7 @@ const INDEX = {
   'the-kraken': { title: 'The Kraken', summary: 'A very large squid.', tags: 'lore,sea', updatedAt: '2026-08-01T10:00:00Z' },
 };
 
-const PODCASTER = { id: 'u1', role: 'podcaster' as const };
+const PODCASTER = mockUser('u1', 'podcaster', 'Ada Lovelace');
 
 function ctxFor(path: string, overrides: Parameters<typeof makeMockCtx>[0] = {}) {
   return makeMockCtx({
@@ -123,7 +123,7 @@ describe('<EditorView>', () => {
   it('hides the editor from someone whose save could never land', async () => {
     // data.writableBy is podcaster, so the host refuses a fan's PUT regardless. This is courtesy, not
     // security — but showing a form that cannot save is worse than saying why.
-    const ctx = ctxFor('the-kraken/edit', { user: { id: 'u2', role: 'fan' } });
+    const ctx = ctxFor('the-kraken/edit', { user: mockUser('u2', 'fan') });
 
     await render(ctx);
 

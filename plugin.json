@@ -1,7 +1,7 @@
 {
   "id": "wiki",
-  "version": "0.2.0",
-  "platformApi": "0.12.0",
+  "version": "0.3.0",
+  "platformApi": "0.14.0",
   "name": "Wiki",
   "license": "AGPL-3.0-or-later",
   "author": "The Mosaicast Authors",
@@ -145,6 +145,9 @@
   "external": {
     "kinds": ["translation"],
     "usedBy": "podcaster"
+  },
+  "identity": {
+    "resolvesUsers": true
   },
   "tags": {
     "readsVocabulary": true,

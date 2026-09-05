@@ -2,12 +2,13 @@
 // SPDX-FileCopyrightText: 2026 The Mosaicast Authors
 
 import { useEffect, useState } from 'react';
-import type { PluginContext } from '@mosaicast/plugin-sdk';
+import type { PluginContext, UserRef } from '@mosaicast/plugin-sdk';
 import { collapseContext, diffLines } from '../diff';
 import { routeHref, type WikiRoute } from '../routes';
 import type { PageRow, RevisionRow } from '../types';
 import type { PluginI18n } from '../i18n';
 import { Icon } from '../icons';
+import { useContributors } from './useContributors';
 
 /** How many revisions a history page lists. The backend prunes past `revisionsKept` anyway. */
 const HISTORY_LIMIT = 100;
@@ -28,6 +29,8 @@ interface HistoryViewProps {
  */
 export function HistoryView({ ctx, i18n, slug, go }: HistoryViewProps) {
   const [revisions, setRevisions] = useState<RevisionRow[] | null>(null);
+  // One lookup for the whole list rather than one per row: `resolve` takes the set.
+  const contributors = useContributors(ctx, (revisions ?? []).map((revision) => revision.author));
 
   useEffect(() => {
     let cancelled = false;
@@ -86,7 +89,12 @@ export function HistoryView({ ctx, i18n, slug, go }: HistoryViewProps) {
               </h3>
               <p>
                 {revision.createdAt ? new Date(revision.createdAt).toLocaleString(ctx.locale.current()) : null}
-                {revision.author ? ` · ${revision.author}` : null}
+                {revision.author && contributors.enabled ? (
+                  <>
+                    {' · '}
+                    <Contributor person={contributors.people.get(revision.author)} i18n={i18n} />
+                  </>
+                ) : null}
                 {revision.comment ? ` · ${revision.comment}` : null}
               </p>
             </li>
@@ -194,5 +202,32 @@ export function RevisionView({ ctx, i18n, slug, revisionNo, go }: RevisionViewPr
         </div>
       )}
     </section>
+  );
+}
+
+/**
+ * One contributor: their avatar and name, or a placeholder when the id resolves to nobody.
+ *
+ * The placeholder is the erased-account case and it is a normal one — `eraseUser` pseudonymises a
+ * contribution rather than deleting it, because a revision is a public contribution (§13). So the row
+ * stays and the person becomes "a former contributor" rather than the page losing its history.
+ */
+export function Contributor({
+  person,
+  i18n,
+}: {
+  person: UserRef | undefined;
+  i18n: PluginI18n;
+}) {
+  if (!person) {
+    return <span className="wiki__who wiki__who--gone">{i18n.t('page.formerContributor')}</span>;
+  }
+  return (
+    <span className="wiki__who">
+      {/* Host-relative and always populated (§8.7) — every user has an avatar, generated from the UUID
+          when there is no provider picture, so there is no null case to handle. */}
+      <img className="wiki__avatar" src={person.avatarUrl} alt="" width={20} height={20} />
+      {person.displayName}
+    </span>
   );
 }

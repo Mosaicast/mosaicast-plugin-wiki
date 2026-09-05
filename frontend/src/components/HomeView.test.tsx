@@ -6,7 +6,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { makeMockCtx, makeMockSchema } from '@mosaicast/plugin-sdk/testing';
 import { WikiPage } from './WikiPage';
-import { flush } from '../test-utils';
+import { flush, mockUser } from '../test-utils';
 
 const INDEX = {
   'the-kraken': { title: 'The Kraken', summary: 'A very large squid.', tags: 'lore', updatedAt: '2026-08-03T10:00:00Z' },
@@ -96,7 +96,7 @@ describe('<HomeView>', () => {
   });
 
   it('offers it to a podcaster', async () => {
-    await render(ctxFor({ user: { id: 'u1', role: 'podcaster' } }, null));
+    await render(ctxFor({ user: mockUser('u1', 'podcaster') }, null));
     expect(host.textContent).toContain('Write one');
   });
 

@@ -16,7 +16,30 @@ warned about, and every entry that moves it says so.
 
 ## [Unreleased]
 
-## [0.2.0] — unreleased
+## [0.3.0] — unreleased
+
+`platformApi` moves to **0.14.0** (core 0.7.0 or newer) — mandatory, since the host matches on an exact
+`major.minor` and rejects an older manifest at load rather than warning about it.
+
+### Added
+
+- **A page history says who wrote it.** `revision.author` and `page.updatedBy` have always been bare
+  UUIDs, and the history list rendered them raw, because `ctx.user.id` was the only thing the plugin ever
+  had. `ctx.users` (SDK 0.13.0) resolves them to a name and the avatar the host generates for every
+  account — and the wiki stores neither. A name is presentation and the id is identity; a stored copy
+  would outlive the rename meant to shed it and the erasure meant to end it.
+- An author who has since been erased renders as **a former contributor** and keeps their revision, which
+  is what pseudonymising a public contribution means. A site whose operator has not granted `identity`
+  attributes nothing at all rather than calling every author a former one.
+
+### Not adopted
+
+- **Notifications** (`ctx.notify`, SDK 0.14.0). The host delivers only to users a plugin already holds
+  `USER`-scope data for, and this wiki holds none — every document it writes is site-scoped. Declaring
+  `notifications` would ship a capability that resolves to an empty recipient list every time. It becomes
+  worth revisiting if the wiki ever grows per-user state, such as watching a page for changes.
+
+## [0.2.0] — 2026-09-03
 
 Authoring, mostly: the editor stopped asking anyone to memorise syntax. `platformApi` is unchanged at
 **0.12.0**, so this is a drop-in replacement for 0.1.0 on the same host.
@@ -107,6 +130,7 @@ a silently broken image link is not.
   MOSAICAST_PLUGINS=Mosaicast/mosaicast-plugin-wiki@v0.1.0#sha256:<digest from the release notes>
   ```
 
-[Unreleased]: https://github.com/Mosaicast/mosaicast-plugin-wiki/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/Mosaicast/mosaicast-plugin-wiki/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/Mosaicast/mosaicast-plugin-wiki/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/Mosaicast/mosaicast-plugin-wiki/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/Mosaicast/mosaicast-plugin-wiki/releases/tag/v0.1.0
