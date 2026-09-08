@@ -7,6 +7,8 @@ import { renderPage, stripSourcesSection, type TocEntry } from '../markdown';
 import { routeHref, routePath, type WikiRoute } from '../routes';
 import type { LinkRow, PageRow, PageSummary, SourceRow } from '../types';
 import { localeName, variantsOf } from '../languages';
+import { useContributors } from './useContributors';
+import { Contributor } from './HistoryView';
 import type { PluginI18n } from '../i18n';
 import { Icon } from '../icons';
 import { EpisodeCard, useEpisodeCards } from './EpisodeCards';
@@ -135,6 +137,11 @@ export function PageView({ ctx, i18n, slug, index, go }: PageViewProps) {
     return () => body.removeEventListener('click', onClick);
   }, [ctx, body, rendered.html]);
 
+  // Who last edited it. The column has always held a UUID and the meta line has always shown only a date,
+  // because until `ctx.users` there was nothing to turn one into. Above the early returns below: this is a
+  // hook, and `page` is `undefined` while it loads.
+  const editors = useContributors(ctx, [page?.updatedBy]);
+
   // Cards for the episodes this page cites, read live from the host rather than from the projection the
   // wiki used to keep. A citation the host says nothing about keeps its inline link and gets no card.
   const snapshots = useEpisodeCards(ctx, body, rendered.html);
@@ -261,6 +268,12 @@ export function PageView({ ctx, i18n, slug, index, go }: PageViewProps) {
           ? i18n.t('page.updated', { when: new Date(page.updatedAt).toLocaleDateString(ctx.locale.current()) })
           : null}
         {page.revisionNo ? ` · ${i18n.t('page.revision', { n: String(page.revisionNo) })}` : null}
+        {page.updatedBy && editors.enabled ? (
+          <>
+            {' · '}
+            <Contributor person={editors.people.get(page.updatedBy)} i18n={i18n} />
+          </>
+        ) : null}
       </p>
 
       {tags.length > 0 && (

@@ -90,9 +90,22 @@ cover. External image URLs still work. Reopen only with a case uploads cannot se
 **reStructuredText or LaTeX as the page syntax.** See 1.3 — the ask was really about image width, and the
 three costs are recorded there.
 
+**Notifications** (`ctx.notify`, SDK 0.14.0). The host delivers only to users a plugin already holds
+`USER`-scope data for — enforced against the same partitions `queryAcrossUsers` reads — and this wiki holds
+none: every document it writes is site-scoped. Declaring `notifications` would ship a manifest capability
+whose every send resolves to an empty recipient list. Revisit only if the wiki grows per-user state, which
+"watch this page for changes" would be the obvious reason for.
+
 ---
 
 ## 6. Done
+
+- **A page history says who wrote it** (SDK 0.13.0 `ctx.users`). `revision.author` and `page.updatedBy`
+  were bare UUIDs rendered raw, because `ctx.user.id` was all the plugin ever had. They resolve to a name
+  and the host's generated avatar now, and the wiki stores neither — a name is presentation, the id is
+  identity, and a stored copy would outlive the rename meant to shed it and the erasure meant to end it.
+  An erased author renders as "a former contributor" and keeps their revision; with no `identity` granted
+  the plugin attributes *nothing*, because calling every live author a former one is a lie.
 
 - **1.1 Language switcher as a dropdown.** The icon is a `<details>` button naming the language you are
   reading; the others are behind it. Below two languages nothing renders at all, as before.

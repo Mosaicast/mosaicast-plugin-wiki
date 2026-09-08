@@ -6,7 +6,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { makeMockBlobs, makeMockCtx, makeMockSchema } from '@mosaicast/plugin-sdk/testing';
 import { WikiPage } from './WikiPage';
-import { flush } from '../test-utils';
+import { flush, mockUser } from '../test-utils';
 
 const INDEX = {
   'the-kraken': { title: 'The Kraken', summary: 'A very large squid.', tags: 'lore', updatedAt: '2026-08-01T10:00:00Z' },
@@ -27,7 +27,7 @@ const MEDIA = [
 function ctxFor(overrides: Parameters<typeof makeMockCtx>[0] = {}) {
   return makeMockCtx({
     route: { path: '_admin' },
-    user: { id: 'u1', role: 'podcaster' },
+    user: mockUser('u1', 'podcaster', 'Ada'),
     apiResponses: {
       'data/site/main/index': INDEX,
       'data/site/main/wikistats': { pages: 2, orphans: 1, brokenLinks: 1, pendingDrafts: 1 },
@@ -66,7 +66,7 @@ describe('<AdminView>', () => {
   };
 
   it('is not offered to someone who cannot act on it', async () => {
-    const ctx = ctxFor({ user: { id: 'u2', role: 'fan' } });
+    const ctx = ctxFor({ user: mockUser('u2', 'fan') });
 
     await render(ctx);
 

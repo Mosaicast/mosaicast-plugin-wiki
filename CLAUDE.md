@@ -12,7 +12,7 @@ Read the first two fully before writing code. Work in plan mode first.
 ### `docs/BRIEF.md` is stale — known corrections
 It predates SDK 0.4.0 and is a read-only spec, so the corrections live here. Where it disagrees with the SDK
 working tree or `mosaicast-plugin-sample`, the latter win.
-- `platformApi` is **`0.12.0`** (exact `major.minor` match; the docs' `"1.x"` does not even parse). Same
+- `platformApi` is **`0.14.0`** (exact `major.minor` match; the docs' `"1.x"` does not even parse). Same
   string in all four places — `plugin.json`, both gradle coordinates, `package.json` — and **none of them is
   a literal in a test**: `manifest.test.ts` compares against the SDK's own `PLATFORM_API_VERSION`, `ci.yml`
   compares the manifest against both gradle coordinates.
@@ -30,13 +30,21 @@ what is particular to this repo:
   unapplied draft, a library entry). **`ctx.links.episode(slug, { t })` / `.feed(…)`** — never hardcode
   `/episodes/…`. Core has shipped its **own share dialog** since 0.6.12; do not build a second.
 - **The `?t=` grammar is shared** (§6.4): `WikiMarkdown.seconds` and `markdown.ts#parseTimestamp` are the
-  *third and fourth* implementations of core's, same case table (`754`, `12:04`, `1:02:03`, `1h02m03s`,
-  `90m`; bounded fields, 24 h cap, unreadable dropped). Change all four together or none.
+  *third and fourth* implementations of core's (`754`, `12:04`, `1:02:03`, `1h02m03s`, `90m`; bounded
+  fields, 24 h cap, unreadable dropped). Change all four together or none.
 - **No request-time backend hook** (§7.6) — hence the draft/ingest write path, and why every invariant lives
   in `ingestOne`. **Unknown subpaths are a real 404**: `hasRoute` answers, and **the empty subpath is our own
   root** — a lookup over slugs alone 404s the landing page.
 - **Every language control here comes from `content()`, never `available()`**, and `isContentLocale`
   validates on ingest: the browser's list is a hint, what reaches storage is input.
+- **`ctx.users` names the ids this plugin stores** (`identity` in the manifest; `null` without it).
+  `revision.author` and `page.updatedBy` are UUIDs and must stay that way — **never persist a display
+  name**, which would outlive the rename meant to shed it and the erasure meant to end it, and which the
+  host cannot police inside our tables. Resolve at render. An unknown or erased id is **absent from the
+  answer**, not null in it — key a `Map` on the id. With no `identity`, attribute *nothing*: calling every
+  live author "a former contributor" is a lie.
+- **`ctx.notify` is declined, not overlooked.** The host only delivers to users a plugin holds `USER`-scope
+  data for, and this wiki holds none, so a send reaches nobody. Revisit if it grows per-user state.
 - **Both SEO surfaces carry a page's language** (0.12.0). `OgMeta.locale` is the language of *this* page — a
   German article stays German for an English scraper. `SitemapUrl.alternates` is a **map of locale → path**,
   the shape a wiki needs: a translation lives at its own slug, so "also in German, same URL + `?lang=`" would

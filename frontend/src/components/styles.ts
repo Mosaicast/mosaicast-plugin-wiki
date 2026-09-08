@@ -60,6 +60,11 @@ export const WIKI_CSS = ICON_CSS + `
   .wiki__btn--ghost { color: var(--mc-text); background: transparent; border-color: var(--mc-border); }
   .wiki__title { margin: 0 0 .25rem; font-size: 1.5rem; line-height: 1.25; }
   .wiki__meta { margin: 0 0 1rem; color: var(--mc-text-muted); font-size: .875rem; }
+  /* A contributor: the avatar the host generates for every account, and the name it resolves now — never
+     a name this plugin stored, which would outlive the rename or erasure meant to change it. */
+  .wiki__who { display: inline-flex; align-items: center; gap: .3rem; vertical-align: middle; }
+  .wiki__who--gone { font-style: italic; opacity: .8; }
+  .wiki__avatar { width: 1.25rem; height: 1.25rem; border-radius: 50%; object-fit: cover; }
   .wiki__empty {
     padding: 2rem 1rem;
     text-align: center;
