@@ -12,15 +12,12 @@ Read the first two fully before writing code. Work in plan mode first.
 ### `docs/BRIEF.md` is stale — known corrections
 It predates SDK 0.4.0 and is a read-only spec, so the corrections live here. Where it disagrees with the SDK
 working tree or `mosaicast-plugin-sample`, the latter win.
-- `platformApi` is **`0.14.0`** (exact `major.minor` match; the docs' `"1.x"` does not even parse). Same
+- `platformApi` is **`0.15.0`** (exact `major.minor` match; the docs' `"1.x"` does not even parse). Same
   string in all four places — `plugin.json`, both gradle coordinates, `package.json` — and **none of them is
   a literal in a test**: `manifest.test.ts` compares against the SDK's own `PLATFORM_API_VERSION`, `ci.yml`
   compares the manifest against both gradle coordinates.
 - Its `site / main` slot **renders nowhere** (`main` is the episode page body), and so does
   `placement: "admin"` — both validate. Hence `page` + `site`, and tooling at `/p/wiki/_admin`.
-- No `data` block, and an absent `readableBy` defaults to the **write** floor: anonymous reads would 403,
-  against its own DoD. Declared explicitly.
-- It predates languages: §30's "page content is author data" holds; `page.locale` only makes it readable.
 
 ### Platform surfaces this plugin depends on
 Every gap this repo filed is **closed** (core#81/#82, [core#89], SDK 0.12.0) — filing one works, prefer it to
@@ -43,6 +40,15 @@ what is particular to this repo:
   host cannot police inside our tables. Resolve at render. An unknown or erased id is **absent from the
   answer**, not null in it — key a `Map` on the id. With no `identity`, attribute *nothing*: calling every
   live author "a former contributor" is a lie.
+- **The ingest period goes through a `Supplier`, never a captured `Duration`** — the latter is read once in
+  `register()` and held for the process, and it is the number deciding how long a save stays *queued*. The
+  supplier runs on a scheduler thread: one config read, nothing blocking. `scheduledPeriods()` pins it.
+- **Surviving a reassigned `ctx` took three things, and the SDK's is only the first.** The elements return a
+  `MosaicastHandle` so the render is not torn down; `useSiteDoc` refetches **without blanking to `loading`**,
+  or `WikiPage` unmounts every view gated on it, editor included; and the editor's load is keyed on the
+  **page**, not on `ctx`, or it writes the stored body over what was typed. Breaking any one loses an
+  author's unsaved work. A test asserting on the SDK's own container `div` passes either way — assert on
+  component state.
 - **`ctx.notify` is declined, not overlooked.** The host only delivers to users a plugin holds `USER`-scope
   data for, and this wiki holds none, so a send reaches nobody. Revisit if it grows per-user state.
 - **Both SEO surfaces carry a page's language** (0.12.0). `OgMeta.locale` is the language of *this* page — a
@@ -199,10 +205,6 @@ part of the work and CI must be green; document public APIs from the built SDK d
 No secrets in the repo. **Sign off commits** (`git commit -s`) and put an **SPDX header in every new source
 file** — `AGPL-3.0-or-later` + `2026 The Mosaicast Authors`, that fixed holder and not your git config. CI
 blocks a PR without either.
-
-Guardrails: identity (`EpisodeRef`) is separate from presentation (the feed snapshot), so runtime and date
-come from the feed and plugin metrics are non-authoritative. The host resolves scopes and decides access;
-plugins only consume. The doc store is the default, schema tables platform-mediated only.
 
 ## Keep docs current, and when unsure
 **README.md**, **BACKLOG.md** and this file are repo-local and yours to maintain; **ARCHITECTURE.md and

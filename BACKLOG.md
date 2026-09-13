@@ -42,16 +42,29 @@ while missing `home`.
 original entry was wrong — it said 19, measured against a local `master` that was itself 19 commits stale.
 `git fetch` before quoting a distance.
 
-### 3.5 Tag v0.2.0 once #19 merges
-The branch bumps the manifest to **0.2.0** (added features, no breaking change, `platformApi` unchanged at
-0.12.0). `CHANGELOG.md` carries the entry as *unreleased*; date it, `git tag v0.2.0` on `master`, publish
-the GitHub release, and the workflow attaches `plugin.tgz` with its digest.
+### ~~3.5 Tag v0.2.0 once #19 merges~~ — done
+Shipped, and so did **v0.3.0** (tagged `8308245`, 2026-09-08). Its `CHANGELOG.md` heading still said
+*unreleased* for five days afterwards, which is the failure mode this entry exists to prevent, one step
+later than last time: the bump was not forgotten, the *dating* was. Date the heading in the release commit,
+not after the tag.
 
 **Do not skip the bump on a feature PR again.** #19 was reviewed for two rounds still declaring `0.1.0`,
 which is the version already tagged and published — merging it would have put different code on `master`
 under a version an operator can already pin. Worth noting that `release.yml` would *not* have caught it:
 its guard compares the tag against the manifest, and `v0.1.0` against a `0.1.0` manifest agrees. What
 stops a duplicate is git refusing to move an existing tag, which is luck rather than a check.
+
+### 3.6 Tag v0.4.0 once the 0.15.0 PR merges
+The branch bumps the manifest to **0.4.0** and `platformApi` to **0.15.0** (core 0.7.2 or newer). Date the
+`CHANGELOG.md` heading in the release commit, `git tag v0.4.0` **on `master`**, publish the GitHub release,
+and the workflow attaches `plugin.tgz` with its digest.
+
+### 3.7 CLAUDE.md is over the length guidance again — *small*
+215 lines against the ~200 the file asks for, which is where 2.3 left it. This round added two invariants
+and deleted two settled BRIEF corrections plus a Guardrails paragraph the file elsewhere says it does not
+repeat, so it is net flat rather than growing. The remaining fat is not obvious: the six live-testing traps,
+the npm lockfile ritual and the translation masking rules were each paid for in real debugging. Cut only
+with something concrete to point at.
 
 ### ~~3.2 The plugin has never been released~~ — done
 **v0.1.0** is tagged and published with `plugin.tgz` attached, so install-by-spec is exercised end to end
@@ -99,6 +112,21 @@ whose every send resolves to an empty recipient list. Revisit only if the wiki g
 ---
 
 ## 6. Done
+
+- **A saved ingest interval is honoured** (SDK 0.15.0 `onSchedule(Supplier<Duration>, …)`). The period was
+  read once in `register()` and held for the life of the process, so a podcaster who saved a new value was
+  told it worked and went on waiting the old one until core restarted — and it is the number deciding how
+  long a save stays *queued*, since a page reaches the wiki through a draft the next pass applies. Pinned by
+  a test that fails against a captured `Duration`.
+- **An unsaved page survives a reassigned `ctx`** (SDK 0.15.0 `MosaicastHandle`, plus two fixes it exposed).
+  Adopting the handle alone did **not** fix it, which a browser showed and the unit tests would not have:
+  the SDK stopped tearing the render down, and the author's body still vanished, because `useSiteDoc`
+  blanked to `loading` on every refetch — unmounting every view `WikiPage` gates on it — and the editor's
+  load effect was keyed on `ctx` and wrote the stored body back over what had been typed. All three are
+  needed; a test pins each. Worth remembering as the shape of the mistake: the platform change was real and
+  the plugin-side assumption about what it bought was not.
+- **Every config field says what it is**, in English and German. Core's generic admin form is the only
+  config UI a plugin gets, and it could previously show an operator `blobGraceMinutes` and nothing else.
 
 - **A page history says who wrote it** (SDK 0.13.0 `ctx.users`). `revision.author` and `page.updatedBy`
   were bare UUIDs rendered raw, because `ctx.user.id` was all the plugin ever had. They resolve to a name

@@ -744,4 +744,36 @@ describe('<HistoryView> and <RevisionView>', () => {
 
     expect(host.textContent).toContain('There is no revision 99');
   });
+
+  it('keeps an unsaved body when the host hands the plugin a new ctx', async () => {
+    // The whole point of the 0.15.0 element change, and it needed two more fixes to be true: the SDK no
+    // longer tears the render down, `useSiteDoc` no longer drops to `loading` on a refetch (which unmounted
+    // every view gated on it, the editor included), and the editor's load is keyed on the page rather than
+    // on the context object (or it would `setMarkdown` over what was typed).
+    //
+    // `ctx` is reassigned on a login, a theme change and a language change, so losing an edit to one is a
+    // live defect, not a hypothetical.
+    await act(async () => root.render(<WikiPage ctx={ctxFor('the-kraken/edit')} />));
+    await flush();
+
+    const body = host.querySelector('textarea') as HTMLTextAreaElement;
+    expect(body).not.toBeNull();
+    expect(body.value).toBe(KRAKEN.markdown);
+
+    const typed = 'Seen off Norway. And, once, off Bergen.';
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')!.set!;
+    await act(async () => {
+      setter.call(body, typed);
+      body.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    expect(body.value).toBe(typed);
+
+    // A different context object carrying the same thing: what the host does several times over an edit.
+    await act(async () => root.render(<WikiPage ctx={ctxFor('the-kraken/edit')} />));
+    await flush();
+
+    const after = host.querySelector('textarea') as HTMLTextAreaElement;
+    expect(after).toBe(body);            // not remounted
+    expect(after.value).toBe(typed);     // not overwritten by the stored body
+  });
 });

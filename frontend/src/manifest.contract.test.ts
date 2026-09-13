@@ -96,6 +96,28 @@ describe('the manifest and the wiki agree', () => {
     expect(tags?.writesEpisodes).toBe(false);
   });
 
+  it('gives every config field a label and a description, in both shipped languages', () => {
+    // A plugin may not build its own config UI (ARCHITECTURE §7.2), so core's generic admin form is the
+    // only thing an operator ever sees — and without these it shows them `blobGraceMinutes` and nothing
+    // else. This is a whole-block assertion rather than five named ones so that a sixth field added later
+    // cannot ship as a bare key.
+    const config = (rawManifest as { config?: Record<string, Record<string, unknown>> }).config ?? {};
+    expect(Object.keys(config).length).toBeGreaterThan(0);
+    for (const [key, field] of Object.entries(config)) {
+      for (const part of ['label', 'description'] as const) {
+        const text = field[part] as Record<string, string> | undefined;
+        expect(text, `${key}.${part}`).toBeTypeOf('object');
+        // `en` because §12.7 makes it the one language a site cannot switch off, and `de` because it is
+        // the other language this plugin ships a catalog for — a label is no use in a language the
+        // operator reading the form does not have.
+        expect(Object.keys(text ?? {}).sort(), `${key}.${part}`).toEqual(['de', 'en']);
+        for (const value of Object.values(text ?? {})) {
+          expect(value.trim().length, `${key}.${part}`).toBeGreaterThan(0);
+        }
+      }
+    }
+  });
+
   it('declares the external service it uses, since ctx.translation is null without it', () => {
     // The trap of the 0.11.0 bump: `translation` was already nullable, so a plugin that used it on 0.10.0
     // keeps compiling and simply gets `null` at runtime until the manifest asks. Nothing warns.

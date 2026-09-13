@@ -116,6 +116,26 @@ Three stores, each for what it is good at:
 Nothing machine-written is ever stored: a translation reaches a new editor through memory, not the doc
 store, and is cleared the moment it is read.
 
+## Settings
+Five, all editable by a podcaster and all rendered by core's own admin form — a plugin never builds its own
+config UI. Each field carries a name and an explanation in English and German, so the form says what a
+setting does rather than only what its author called it.
+
+| Setting | Default | What it does |
+|---|---|---|
+| `homePageSlug` | `main-page` | Which ordinary wiki page is the front page. |
+| `ingestIntervalSeconds` | `30` | Seconds between two ingest passes — how long a save stays queued. |
+| `revisionsKept` | `50` | Revisions per page before the oldest are pruned. |
+| `sourceHeadings` | `sources,quellen` | The headings that open a sources section. Add your language's word. |
+| `blobGraceMinutes` | `60` | How long an upload nothing points at survives before it is swept. |
+
+**Changing the interval takes effect within one old interval**, without restarting the site. It used to be
+read once at startup and held until the next restart, so a saved change reported success and did nothing.
+
+Reaching these needs core **0.7.2 or newer** if you are a podcaster rather than an admin: the fields have
+always been podcaster-editable, but until then the *read* of the settings page was admin-only, so a
+podcaster saw "Not allowed" on a page of settings that were theirs.
+
 ## Contributing
 Contributions welcome — see [`CONTRIBUTING.md`](CONTRIBUTING.md). In short: `git commit -s` (DCO, required), SPDX header in new files, add tests.
 
