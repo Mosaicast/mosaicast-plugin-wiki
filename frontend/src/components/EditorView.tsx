@@ -102,8 +102,19 @@ export function EditorView({ ctx, i18n, slug, index, go }: EditorViewProps) {
 
   const targetSlug = isNew ? newSlug : slug;
 
+  // The context as of this render, reachable from an effect that must not re-run when it is replaced.
+  // The host hands a new `ctx` object on a login, a theme change and any render of its own, and the load
+  // below writes straight into the fields the author is typing in.
+  const ctxRef = useRef(ctx);
+  ctxRef.current = ctx;
+
   // --- load the page being edited ------------------------------------------------------------------
+  // Keyed on the *page*, not on the context. Re-running this because the host rebuilt its context object
+  // would call `setMarkdown` with what is stored and throw away everything typed since — the editor is the
+  // one view where refetching is not a harmless revalidation. A genuine move to another page changes
+  // `slug` and does re-run it.
   useEffect(() => {
+    const ctx = ctxRef.current;
     if (isNew || !ctx.schema) {
       setLoaded(true);
       return;
@@ -139,7 +150,8 @@ export function EditorView({ ctx, i18n, slug, index, go }: EditorViewProps) {
     return () => {
       cancelled = true;
     };
-  }, [ctx, slug, isNew]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `ctx` is read through `ctxRef` on purpose
+  }, [slug, isNew]);
 
   // Read the effective quota before anyone picks a file: an admin's grant replaces the manifest's ask, so
   // this is the only honest source for what this install actually allows. Telling someone the ceiling

@@ -1,7 +1,7 @@
 {
   "id": "wiki",
-  "version": "0.3.0",
-  "platformApi": "0.14.0",
+  "version": "0.4.0",
+  "platformApi": "0.15.0",
   "name": "Wiki",
   "license": "AGPL-3.0-or-later",
   "author": "The Mosaicast Authors",
@@ -157,27 +157,52 @@
     "homePageSlug": {
       "type": "string",
       "default": "main-page",
-      "editableBy": "podcaster"
+      "editableBy": "podcaster",
+      "label": { "en": "Front page", "de": "Startseite" },
+      "description": {
+        "en": "The slug of the wiki page shown as the wiki's front page. It is an ordinary page, so it has revisions, history and an editor like any other. A slug naming no page shows the generated sections alone.",
+        "de": "Der Slug der Wiki-Seite, die als Startseite des Wikis dient. Sie ist eine ganz normale Seite und hat Versionen, Verlauf und Editor wie jede andere. Zeigt ein Slug auf keine Seite, erscheinen nur die erzeugten Abschnitte."
+      }
     },
     "ingestIntervalSeconds": {
       "type": "number",
       "default": 30,
-      "editableBy": "podcaster"
+      "editableBy": "podcaster",
+      "label": { "en": "Ingest interval (seconds)", "de": "Abrufintervall (Sekunden)" },
+      "description": {
+        "en": "Seconds between two ingest passes. Saving a page writes a draft that the next pass applies, so this is how long an author waits before a save is visible. A change takes effect within one old interval; the host enforces a floor of its own.",
+        "de": "Sekunden zwischen zwei Abrufläufen. Beim Speichern einer Seite entsteht ein Entwurf, den erst der nächste Lauf übernimmt — so lange wartet eine Autorin, bis eine Änderung sichtbar wird. Eine Änderung greift innerhalb eines alten Intervalls; der Host erzwingt zusätzlich eine Untergrenze."
+      }
     },
     "revisionsKept": {
       "type": "number",
       "default": 50,
-      "editableBy": "podcaster"
+      "editableBy": "podcaster",
+      "label": { "en": "Revisions kept per page", "de": "Aufbewahrte Versionen je Seite" },
+      "description": {
+        "en": "How many revisions of a page are kept before the oldest are pruned. Pruning happens on the ingest pass and cannot be undone.",
+        "de": "Wie viele Versionen einer Seite aufbewahrt werden, bevor die ältesten gelöscht werden. Das Löschen geschieht beim Abruflauf und lässt sich nicht rückgängig machen."
+      }
     },
     "sourceHeadings": {
       "type": "string",
       "default": "sources,quellen",
-      "editableBy": "podcaster"
+      "editableBy": "podcaster",
+      "label": { "en": "Sources headings", "de": "Quellen-Überschriften" },
+      "description": {
+        "en": "Comma-separated headings that open a page's sources section, matched case-insensitively. The section below one of these is extracted and rendered as a source list. Add the word your wiki is written in — a page under \"## Fuentes\" needs \"fuentes\" here.",
+        "de": "Kommagetrennte Überschriften, die den Quellenabschnitt einer Seite einleiten; Groß- und Kleinschreibung egal. Der Abschnitt darunter wird ausgelesen und als Quellenliste dargestellt. Ergänze das Wort deiner Sprache — eine Seite unter \"## Fuentes\" braucht hier \"fuentes\"."
+      }
     },
     "blobGraceMinutes": {
       "type": "number",
       "default": 60,
-      "editableBy": "podcaster"
+      "editableBy": "podcaster",
+      "label": { "en": "Unused upload grace period (minutes)", "de": "Schonfrist für ungenutzte Uploads (Minuten)" },
+      "description": {
+        "en": "How long an uploaded file that nothing points at is kept before the ingest pass deletes it. A file in the media library counts as referenced, so only a file that is in neither the library nor a page body is ever swept.",
+        "de": "Wie lange eine hochgeladene Datei, auf die nichts verweist, erhalten bleibt, bevor der Abruflauf sie löscht. Ein Eintrag in der Medienbibliothek zählt als Verweis — gelöscht wird also nur, was weder in der Bibliothek noch in einem Seitentext vorkommt."
+      }
     }
   }
 }

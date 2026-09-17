@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // SPDX-FileCopyrightText: 2026 The Mosaicast Authors
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { PluginContext } from '@mosaicast/plugin-sdk';
 import { isPluginApiError } from '@mosaicast/plugin-sdk';
 import { SITE_PATH } from '../types';
@@ -20,16 +20,28 @@ export interface Loaded<T> {
  * to yet, and treating it as an error would show a scary tile on a healthy empty install. Anything else is
  * reported, because a 403 (a misdeclared `readableBy` floor) must not look like emptiness.
  *
+ * **A reassigned `ctx` refetches but does not blank.** The host hands a new context object on a login, a
+ * theme change, a language change and any other render of its own, and this hook re-reads on each — which
+ * is right, since the answer can have changed. What it must not do is drop back to `loading` on the way,
+ * because `WikiPage` gates its views on that flag: the editor would be unmounted and mounted again, with
+ * an author's unsaved body in it, several times over the life of one edit. So the blank happens only when
+ * the `key` really is a different document; otherwise the previous answer stays on screen until the new
+ * one replaces it.
+ *
  * @param ctx the host context
  * @param key the doc key below `data/site/main/`
  * @returns the document, or `null` when it does not exist yet
  */
 export function useSiteDoc<T>(ctx: PluginContext, key: string): Loaded<T> {
   const [state, setState] = useState<Loaded<T>>({ data: null, loading: true, failed: false });
+  /** The key the state on screen belongs to, so a refetch can be told from a navigation. */
+  const shownKey = useRef<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    setState({ data: null, loading: true, failed: false });
+    if (shownKey.current !== key) {
+      setState({ data: null, loading: true, failed: false });
+    }
 
     // `getOrNull` resolves an absent document to null instead of rejecting. Before SDK 0.9 this was a
     // `catch` that sniffed the message for "404" -- which also swallowed the 403 and the 500 it could not
@@ -39,6 +51,7 @@ export function useSiteDoc<T>(ctx: PluginContext, key: string): Loaded<T> {
       .getOrNull<T>(`${SITE_PATH}/${key}`)
       .then((data) => {
         if (!cancelled) {
+          shownKey.current = key;
           setState({ data, loading: false, failed: false });
         }
       })
@@ -47,6 +60,7 @@ export function useSiteDoc<T>(ctx: PluginContext, key: string): Loaded<T> {
           return;
         }
         ctx.log('warn', `wiki: could not read ${key}: ${describeApiError(error)}`);
+        shownKey.current = key;
         setState({ data: null, loading: false, failed: true });
       });
 

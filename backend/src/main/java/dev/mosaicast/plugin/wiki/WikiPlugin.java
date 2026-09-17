@@ -133,10 +133,29 @@ public class WikiPlugin implements PluginBackend, ShareMetadataProvider, Sitemap
         // declares it, so anything forged earlier survives until this overwrites it.
         tick();
 
-        int seconds = ctx.config().get("ingestIntervalSeconds", Integer.class, DEFAULT_INGEST_SECONDS);
-        ctx.onSchedule(Duration.ofSeconds(Math.max(1, seconds)), this::tick);
-        ctx.logger().info("wiki registered; ingest every {}s, schema={}",
-                seconds, ctx.schema() == null ? "absent" : ctx.schema().namespace());
+        // The *supplier* overload, not the Duration one, and that is the whole point: the Duration form
+        // captures the period during register() and holds it for the life of the process, so a podcaster
+        // who saved a new interval was told it worked and went on waiting the old one until core
+        // restarted. Every other setting here is already read inside the tick; this was the one frozen
+        // number, and it is the number that decides how long "queued" lasts for a save that is
+        // eventually consistent by construction.
+        ctx.onSchedule(() -> Duration.ofSeconds(ingestIntervalSeconds()), this::tick);
+        ctx.logger().info("wiki registered; ingest every {}s at boot, schema={}",
+                ingestIntervalSeconds(), ctx.schema() == null ? "absent" : ctx.schema().namespace());
+    }
+
+    /**
+     * The ingest period an operator has asked for, re-read before every tick.
+     *
+     * <p>Runs on a scheduler thread, so it does what a supplier in that position may do and no more: one
+     * config read, no store access, no blocking. A floor of one second because registration is the strict
+     * moment — a non-positive period there is rejected outright rather than falling back — and the host
+     * clamps to a floor of its own on top, which makes this number a request like the manifest's others.
+     *
+     * @return the period in seconds, at least 1
+     */
+    private int ingestIntervalSeconds() {
+        return Math.max(1, ctx.config().get("ingestIntervalSeconds", Integer.class, DEFAULT_INGEST_SECONDS));
     }
 
     /** One scheduled pass: apply what the browser wrote, then refresh what the browser reads. */

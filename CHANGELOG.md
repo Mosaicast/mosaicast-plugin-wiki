@@ -16,7 +16,60 @@ warned about, and every entry that moves it says so.
 
 ## [Unreleased]
 
-## [0.3.0] — unreleased
+## [0.4.0] — unreleased
+
+`platformApi` moves to **0.15.0** (core 0.7.2 or newer) — mandatory, since the host matches on an exact
+`major.minor` and rejects an older manifest at load rather than warning about it. The release exists to fix
+two contract bugs, and **the wiki had one of them**.
+
+### Fixed
+
+- **Changing the ingest interval now actually changes it.** The period was read once, when the plugin
+  registered, and held until core restarted — so a podcaster who saved a new value was told the save had
+  worked and then went on waiting the old interval, with nothing anywhere saying so. It is now re-read
+  before every pass, and an edit takes effect within one old interval. This is the setting that decides how
+  long a save stays *queued*, since a page reaches the wiki through a draft the next pass applies, so it was
+  the worst one to have frozen.
+
+### Added
+
+- **Every setting says what it is, in English and German.** Core's admin form is the only config UI a
+  plugin gets — writing its own is precisely what it may not do — and until now it could show an operator
+  `blobGraceMinutes` and nothing else. Each of the five fields now carries a name and a sentence on what it
+  does, what unit it is in and what changing it costs, resolved against the language the operator is
+  reading in.
+- Also worth knowing, and core's doing rather than the wiki's: **a podcaster can now open the settings
+  page** these fields live on. All five are `editableBy: podcaster` and always have been, but the read fell
+  through to an admin-only check, so a podcaster saw "Not allowed" on the whole page and the declaration was
+  decorative.
+
+### Fixed (continued)
+
+- **An unsaved page is no longer thrown away when the host rebuilds its context.** `ctx` is reassigned on a
+  login, a theme change and a language change, and each one used to cost an author everything typed since
+  their last save — the body, the cursor position, an open picker. Three separate things had to be true to
+  stop it, and only the first is the contract change:
+  - the SDK no longer tears the render down and rebuilds it (`MosaicastHandle.update`, `platformApi`
+    0.15.0);
+  - reading the page index refetches without first blanking to *loading*, which was unmounting every view
+    gated on it, the editor included;
+  - and the editor loads its page when the **page** changes rather than when the context object does, or it
+    wrote the stored body back over what had been typed.
+
+  Verified in a browser rather than only in tests: the text and the cursor both stay put. On core 0.7.2 the
+  four-times-a-second reassignment the contract change was written for does not arise — that release
+  memoises the context object — but the everyday ones do, and the wiki's episode tile renders on the page
+  with the player on it.
+
+### Not adopted
+
+- **Notifications** (`ctx.notify`), unchanged from 0.3.0: the host delivers only to users a plugin already
+  holds `USER`-scope data for, and every document this wiki writes is site-scoped.
+- **`options` on a config field.** No setting here has a closed set of values. `sourceHeadings` is
+  deliberately open — the whole reason it became a setting is that a fixed list only helps the languages
+  somebody thought to add.
+
+## [0.3.0] — 2026-09-08
 
 `platformApi` moves to **0.14.0** (core 0.7.0 or newer) — mandatory, since the host matches on an exact
 `major.minor` and rejects an older manifest at load rather than warning about it.
@@ -130,7 +183,8 @@ a silently broken image link is not.
   MOSAICAST_PLUGINS=Mosaicast/mosaicast-plugin-wiki@v0.1.0#sha256:<digest from the release notes>
   ```
 
-[Unreleased]: https://github.com/Mosaicast/mosaicast-plugin-wiki/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/Mosaicast/mosaicast-plugin-wiki/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/Mosaicast/mosaicast-plugin-wiki/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/Mosaicast/mosaicast-plugin-wiki/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/Mosaicast/mosaicast-plugin-wiki/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/Mosaicast/mosaicast-plugin-wiki/releases/tag/v0.1.0

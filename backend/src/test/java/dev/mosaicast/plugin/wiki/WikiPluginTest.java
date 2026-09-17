@@ -14,6 +14,8 @@ import dev.mosaicast.plugin.testkit.FakePluginContext;
 import dev.mosaicast.plugin.testkit.FakeSchemaStore;
 import dev.mosaicast.plugin.testkit.InMemoryDocStore;
 import dev.mosaicast.plugin.testkit.MapPluginConfig;
+import java.time.Duration;
+import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 
@@ -60,6 +62,39 @@ class WikiPluginTest {
         new WikiPlugin().register(ctx);
 
         assertEquals(1, ctx.scheduledCount());
+        assertEquals(List.of(Duration.ofSeconds(5)), ctx.scheduledPeriods());
+    }
+
+    @Test
+    void followsAnIntervalSavedAfterRegistration() {
+        // The assertion this file was missing, and the reason the plugin used to be wrong: the old code
+        // read the interval once in register() and held it for the life of the process, so a podcaster
+        // saved a new value, the admin form reported success, and the ingest went on running at the old
+        // cadence until core restarted. scheduledPeriods() re-reads the supplier, so a captured Duration
+        // keeps reporting 5 here and fails.
+        var config = new MapPluginConfig().with("ingestIntervalSeconds", 5);
+        var ctx = ctxWith(schema(), noFeeds(), config);
+        new WikiPlugin().register(ctx);
+
+        config.with("ingestIntervalSeconds", 60);
+
+        assertEquals(List.of(Duration.ofSeconds(60)), ctx.scheduledPeriods());
+    }
+
+    @Test
+    void refusesToScheduleAtZeroHoweverTheConfigIsWritten() {
+        // Registration is the one strict moment -- the host rejects a non-positive period outright rather
+        // than falling back to anything -- so a typo in a form must not be able to produce one. The host
+        // clamps to a floor of its own above this; one second is only the floor that keeps registration
+        // legal.
+        var config = new MapPluginConfig().with("ingestIntervalSeconds", 0);
+        var ctx = ctxWith(schema(), noFeeds(), config);
+        new WikiPlugin().register(ctx);
+
+        assertEquals(List.of(Duration.ofSeconds(1)), ctx.scheduledPeriods());
+
+        config.with("ingestIntervalSeconds", -30);
+        assertEquals(List.of(Duration.ofSeconds(1)), ctx.scheduledPeriods());
     }
 
     @Test
