@@ -32,12 +32,17 @@ warned about, and every entry that moves it says so.
   **`ctx.sanitize`**, the host's own feed-HTML policy. The wiki's own tokens (links, episode citations, sized
   images) need attributes that policy rightly refuses an author, so they are swapped for placeholder words
   before parsing and put back — into text nodes only — after sanitising; an author can no longer set `class`,
-  `data-*` or `style` by hand. The direct `dompurify` dependency is gone.
+  `data-*` or `style` by hand. The direct `dompurify` dependency is gone. A sized image is the one element
+  built from an author-typed URL, so its `src` is held to the host's URL allowlist too — no `data:` image.
 
 ### Fixed
 
 - **An episode card's note shows the show notes as text**, not the feed's HTML printed as literal tags: it
   reads `descriptionText` (SDK 0.16.0) instead of `description`.
+- **A task list keeps its ticks.** The host policy drops `<input>`, which took `- [x]` and `- [ ]` down to the
+  same bullet; the boxes are now ☑/☐ glyphs.
+- **External links carry the host's `rel`** (`noopener noreferrer nofollow ugc`). The wiki rewrote it after
+  sanitising, dropping `nofollow ugc` and sending a same-origin absolute link to a new tab.
 
 ### Changed
 

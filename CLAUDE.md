@@ -40,7 +40,11 @@ what is particular to this repo:
   host cannot police inside our tables. Resolve at render. An unknown or erased id is **absent from the
   answer**, not null in it — key a `Map` on the id. With no `identity`, attribute *nothing*: calling every
   live author "a former contributor" is a lie.
-- **Author HTML goes through `ctx.sanitize`, the wiki's own markup does not** (0.5.0, SDK 0.16.0). `markdown.ts` swaps each token for a nonce placeholder before parsing, sanitises, then restores the elements it built — into text nodes only. Never widen this by passing author HTML through the restore path, and never go back to a DOMPurify config: its defaults let `<style>` deface the site (SEC-C07).
+- **Author HTML goes through `ctx.sanitize`, the wiki's own markup does not** (0.5.0, SDK 0.16.0).
+  `markdown.ts` swaps each token for a nonce placeholder, sanitises, then restores the elements it built —
+  into text nodes only. Never pass author HTML through that restore path, hold any author URL in a built
+  element to `FEED_HTML_POLICY.allowedUriRegexp`, and leave `target`/`rel` to the host. Never go back to a
+  DOMPurify config: its defaults let `<style>` deface the site (SEC-C07).
 - **The ingest period goes through a `Supplier`, never a captured `Duration`** — the latter is read once in
   `register()` and held for the process, and it is the number deciding how long a save stays *queued*. The
   supplier runs on a scheduler thread: one config read, nothing blocking. `scheduledPeriods()` pins it.

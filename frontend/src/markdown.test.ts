@@ -2,6 +2,7 @@
 // SPDX-FileCopyrightText: 2026 The Mosaicast Authors
 
 import { describe, expect, it } from 'vitest';
+import { FEED_HTML_POLICY } from '@mosaicast/plugin-sdk';
 import { sanitizeLikeHost } from '@mosaicast/plugin-sdk/testing';
 import {
   formatImage,
@@ -58,6 +59,19 @@ describe('renderPage — the host policy, and the wiki\'s own markup (SDK 0.16.0
     expect(forged?.hasAttribute('data-wiki')).toBe(false);
   });
 
+  it('holds a sized image to the host\'s URL allowlist, since it skips the sanitiser', () => {
+    const { html } = renderPage('![pixel](data:image/svg+xml,abc){width=10}', options());
+    const page = host(html);
+    expect(page.querySelector('img')).toBeNull();
+    expect(page.textContent).toContain('pixel');
+  });
+
+  it('keeps a task list\'s state, which the policy would drop with its <input>', () => {
+    const { html } = renderPage('- [ ] todo\n- [x] done', options());
+    const items = [...host(html).querySelectorAll('li')].map((li) => li.textContent?.trim());
+    expect(items).toEqual(['☐ todo', '☑ done']);
+  });
+
   it('never splices a token into an attribute, where markup would become attributes', () => {
     const { html } = renderPage('![look [[the-kraken]]](/m.png)', options());
     const image = host(html).querySelector('img');
@@ -70,7 +84,7 @@ describe('renderPage — the host policy, and the wiki\'s own markup (SDK 0.16.0
 describe('renderPage — sanitising', () => {
   it('strips a script tag out of author markdown', () => {
     // Markdown permits raw HTML by design, and a page body is author input that ends up as markup on a
-    // public page. This is the whole reason the output goes through DOMPurify.
+    // public page. This is the whole reason the output goes through `ctx.sanitize`.
     const { html } = renderPage('Hello <script>alert(1)</script> there', options());
 
     expect(html).not.toContain('<script');
@@ -172,10 +186,11 @@ describe('renderPage — headings and external links', () => {
     expect(toc.map((entry) => entry.id)).toEqual(['notes', 'notes-2']);
   });
 
-  it('never hands the opener to an external tab', () => {
+  it('never hands the opener to an external tab, and keeps the host\'s rel', () => {
     const { html } = renderPage('[out](https://example.com)', options());
 
-    expect(html).toContain('rel="noopener noreferrer"');
+    // The host's own string, not one the wiki rewrites it to -- that dropped `nofollow ugc`.
+    expect(html).toContain(`rel="${FEED_HTML_POLICY.externalLinkRel}"`);
     expect(html).toContain('target="_blank"');
   });
 

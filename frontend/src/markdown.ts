@@ -1,7 +1,19 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // SPDX-FileCopyrightText: 2026 The Mosaicast Authors
 
-import { marked } from 'marked';
+import { FEED_HTML_POLICY } from '@mosaicast/plugin-sdk';
+import { Marked } from 'marked';
+
+/**
+ * The parser, with one renderer changed: a task-list box becomes a glyph. The host policy drops `<input>`
+ * (it is how a form gets into a page), so marked's disabled checkbox vanished and `- [x] done` read the same
+ * as `- [ ] todo`. A glyph is text, so there is nothing for the policy to refuse and nothing to restore.
+ */
+const parser = new Marked({
+  renderer: {
+    checkbox: ({ checked }) => (checked ? '\u2611 ' : '\u2610 '),
+  },
+});
 
 /**
  * Renders a page body to HTML that is safe to insert.
@@ -284,7 +296,9 @@ function expandTokens(markdown: string, options: RenderOptions, keep: (html: str
     const src = target.startsWith('blob:')
       ? (options.blobUrl ? options.blobUrl(target.slice('blob:'.length)) : null)
       : target;
-    if (!src) {
+    // This element skips the sanitiser -- it needs `style` and `class` -- so its one author-typed URL is held
+    // to the same allowlist the host would have applied: no `data:`, no `javascript:`.
+    if (!src || !FEED_HTML_POLICY.allowedUriRegexp.test(src.replace(/[\u0000-\u0020]/g, ''))) {
       return escapeHtml(alt);
     }
     const { width, align } = parseImageAttrs(attrs);
@@ -402,7 +416,7 @@ export function renderPage(markdown: string, options: RenderOptions): RenderedPa
   const built: string[] = [];
   const keep = (html: string) => `wikitoken${nonce}n${built.push(html) - 1}x`;
 
-  const parsed = marked.parse(expandTokens(markdown ?? '', options, keep), { async: false }) as string;
+  const parsed = parser.parse(expandTokens(markdown ?? '', options, keep), { async: false }) as string;
   const clean = options.sanitize(parsed);
 
   // Ids are assigned after sanitising, on a detached element: an id that came from the body could
@@ -420,11 +434,8 @@ export function renderPage(markdown: string, options: RenderOptions): RenderedPa
     toc.push({ id, text, level: heading.tagName === 'H2' ? 2 : 3 });
   });
 
-  // An external link opens in a new tab and must not hand the opener over with it.
-  host.querySelectorAll('a[href^="http"]').forEach((anchor) => {
-    anchor.setAttribute('target', '_blank');
-    anchor.setAttribute('rel', 'noopener noreferrer');
-  });
+  // No `target`/`rel` pass here: `ctx.sanitize` already sends a link leaving the site to a new tab with the
+  // host's `rel`, and leaves a same-origin one alone. Rewriting it afterwards dropped `nofollow ugc`.
 
   const firstParagraph = host.querySelector('p')?.textContent?.trim() ?? '';
   return { html: host.innerHTML, toc, plainFirstParagraph: firstParagraph };
