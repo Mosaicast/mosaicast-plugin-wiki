@@ -297,8 +297,10 @@ function expandTokens(markdown: string, options: RenderOptions, keep: (html: str
       ? (options.blobUrl ? options.blobUrl(target.slice('blob:'.length)) : null)
       : target;
     // This element skips the sanitiser -- it needs `style` and `class` -- so its one author-typed URL is held
-    // to the same allowlist the host would have applied: no `data:`, no `javascript:`.
-    if (!src || !FEED_HTML_POLICY.allowedUriRegexp.test(src.replace(/[\u0000-\u0020]/g, ''))) {
+    // to the rule the host would have applied to an `<img src>`: the allowlist, plus the policy's one stated
+    // exception, a `data:` image (SDK 0.16.1). No `javascript:`, no `vbscript:`.
+    const uri = src?.trim().replace(/[\u0000-\u0020]/g, '') ?? '';
+    if (!src || !(FEED_HTML_POLICY.allowedUriRegexp.test(uri) || uri.startsWith('data:'))) {
       return escapeHtml(alt);
     }
     const { width, align } = parseImageAttrs(attrs);

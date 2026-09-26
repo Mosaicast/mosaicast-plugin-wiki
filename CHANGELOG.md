@@ -18,8 +18,10 @@ warned about, and every entry that moves it says so.
 
 ## [0.5.0] — unreleased
 
-`platformApi` moves to **0.16.0** (core 0.7.4 or newer) — mandatory, the host matches on an exact
-`major.minor`. The contract minor came out of three test passes, and one of their findings was this plugin's.
+`platformApi` moves to **0.16.1** (core 0.7.4 or newer) — mandatory, the host matches on an exact
+`major.minor`, and the patch floats. The contract minor came out of three test passes, and one of their findings
+was this plugin's. A resumed numbered list and table alignment need a core built on SDK 0.16.1; on 0.7.4 they
+render as before, renumbered and unaligned.
 
 ### Security
 
@@ -33,7 +35,8 @@ warned about, and every entry that moves it says so.
   images) need attributes that policy rightly refuses an author, so they are swapped for placeholder words
   before parsing and put back — into text nodes only — after sanitising; an author can no longer set `class`,
   `data-*` or `style` by hand. The direct `dompurify` dependency is gone. A sized image is the one element
-  built from an author-typed URL, so its `src` is held to the host's URL allowlist too — no `data:` image.
+  built from an author-typed URL, so its `src` is held to the rule the host applies to an `<img src>`: the
+  policy's allowlist plus its one stated exception, a `data:` image.
 
 ### Fixed
 
@@ -41,6 +44,8 @@ warned about, and every entry that moves it says so.
   reads `descriptionText` (SDK 0.16.0) instead of `description`.
 - **A task list keeps its ticks.** The host policy drops `<input>`, which took `- [x]` and `- [ ]` down to the
   same bullet; the boxes are now ☑/☐ glyphs.
+- **A numbered list resumed after an image or a code block keeps its number, and a table keeps its column
+  alignment** (SDK 0.16.1 allows `start` and `align`, mosaicast-plugin-sdk#81).
 - **External links carry the host's `rel`** (`noopener noreferrer nofollow ugc`). The wiki rewrote it after
   sanitising, dropping `nofollow ugc` and sending a same-origin absolute link to a new tab.
 

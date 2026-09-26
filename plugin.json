@@ -1,7 +1,7 @@
 {
   "id": "wiki",
   "version": "0.5.0",
-  "platformApi": "0.16.0",
+  "platformApi": "0.16.1",
   "name": "Wiki",
   "license": "AGPL-3.0-or-later",
   "author": "The Mosaicast Authors",

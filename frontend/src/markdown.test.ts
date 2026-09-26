@@ -59,11 +59,20 @@ describe('renderPage — the host policy, and the wiki\'s own markup (SDK 0.16.0
     expect(forged?.hasAttribute('data-wiki')).toBe(false);
   });
 
-  it('holds a sized image to the host\'s URL allowlist, since it skips the sanitiser', () => {
-    const { html } = renderPage('![pixel](data:image/svg+xml,abc){width=10}', options());
+  it('holds a sized image to the host\'s URL rule, since it skips the sanitiser', () => {
+    const { html } = renderPage('![pixel](vbscript:x){width=10}', options());
     const page = host(html);
     expect(page.querySelector('img')).toBeNull();
     expect(page.textContent).toContain('pixel');
+    // The policy's one stated exception (SDK 0.16.1): a `data:` image is kept, sized or not.
+    const inline = host(renderPage('![dot](data:image/png;base64,AAAA){width=10}', options()).html);
+    expect(inline.querySelector('img')?.getAttribute('src')).toBe('data:image/png;base64,AAAA');
+  });
+
+  it('keeps a resumed list\'s number and a table\'s alignment (SDK 0.16.1)', () => {
+    const page = host(renderPage('3. three\n4. four\n\n| a | b |\n|:-:|--:|\n| 1 | 2 |', options()).html);
+    expect(page.querySelector('ol')?.getAttribute('start')).toBe('3');
+    expect(page.querySelector('th')?.getAttribute('align')).toBe('center');
   });
 
   it('keeps a task list\'s state, which the policy would drop with its <input>', () => {
