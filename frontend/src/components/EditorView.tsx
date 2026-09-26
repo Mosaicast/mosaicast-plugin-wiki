@@ -226,6 +226,7 @@ export function EditorView({ ctx, i18n, slug, index, go }: EditorViewProps) {
         hasPage: (target) => Object.prototype.hasOwnProperty.call(index, target),
         episodeHref: (episode, seconds) => ctx.links.episode(episode, seconds == null ? undefined : { t: seconds }),
         blobUrl: ctx.blobs ? (ref) => ctx.blobs!.urlFor(ref) : undefined,
+        sanitize: ctx.sanitize,
       }),
     [ctx, markdown, index],
   );

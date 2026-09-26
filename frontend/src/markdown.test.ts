@@ -2,6 +2,7 @@
 // SPDX-FileCopyrightText: 2026 The Mosaicast Authors
 
 import { describe, expect, it } from 'vitest';
+import { sanitizeLikeHost } from '@mosaicast/plugin-sdk/testing';
 import {
   formatImage,
   formatTimestamp,
@@ -16,7 +17,54 @@ import {
 const options = (over: Partial<RenderOptions> = {}): RenderOptions => ({
   hasPage: (slug) => slug === 'the-kraken',
   episodeHref: (slug, seconds) => (seconds == null ? `/episodes/${slug}` : `/episodes/${slug}?t=${seconds}`),
+  // What `ctx.sanitize` does in the host, reimplemented by the SDK test kit (SDK 0.16.0).
+  sanitize: sanitizeLikeHost,
   ...over,
+});
+
+describe('renderPage — the host policy, and the wiki\'s own markup (SDK 0.16.0)', () => {
+  const host = (html: string) => {
+    const div = document.createElement('div');
+    div.innerHTML = html;
+    return div;
+  };
+
+  it('drops a stylesheet an author wrote — the page defacement DOMPurify defaults let through (SEC-C07)', () => {
+    const { html } = renderPage(
+      'Fine <style>:host{position:fixed;inset:0;z-index:99999}</style>\n\n<p style="position:fixed">x</p>',
+      options(),
+    );
+    const page = host(html);
+    expect(page.querySelector('style')).toBeNull();
+    expect(page.querySelector('[style]')).toBeNull();
+    expect(page.textContent).toContain('Fine');
+  });
+
+  it('keeps the attributes the wiki\'s own tokens need, and gives an author none of them', () => {
+    const { html } = renderPage(
+      '[[the-kraken]] and [[episode:s01e02@1:30]] and ![map](/m.png){width=50% align=left} and ' +
+        '<a class="wiki-link" data-wiki="evil" href="/x">forged</a>',
+      options(),
+    );
+    const page = host(html);
+    const link = page.querySelector('a[data-wiki="the-kraken"]');
+    expect(link?.className).toBe('wiki-link');
+    expect(page.querySelector('a.wiki-ep')?.getAttribute('data-t')).toBe('90');
+    const image = page.querySelector('img.wiki__img--left') as HTMLImageElement | null;
+    expect(image?.style.width).toBe('50%');
+    // The same attributes, typed by the author, are the host's to refuse.
+    const forged = [...page.querySelectorAll('a')].find((a) => a.textContent === 'forged');
+    expect(forged?.hasAttribute('class')).toBe(false);
+    expect(forged?.hasAttribute('data-wiki')).toBe(false);
+  });
+
+  it('never splices a token into an attribute, where markup would become attributes', () => {
+    const { html } = renderPage('![look [[the-kraken]]](/m.png)', options());
+    const image = host(html).querySelector('img');
+    expect(image).not.toBeNull();
+    expect(image!.getAttributeNames().sort()).toEqual(['alt', 'src']);
+    expect(image!.getAttribute('alt')).not.toContain('<');
+  });
 });
 
 describe('renderPage — sanitising', () => {
@@ -220,6 +268,7 @@ describe('image attributes', () => {
     hasPage: () => true,
     episodeHref: (slug) => `/episodes/${slug}`,
     blobUrl: (ref) => `/api/plugins/wiki/blob/${ref}`,
+    sanitize: sanitizeLikeHost,
   };
 
   it('reads a width in pixels or percent, and an alignment', () => {

@@ -322,7 +322,8 @@ describe('<WikiPage> — reader', () => {
       return {
         s01e02: {
           title: 'Letters from the Bottom of the Sea',
-          description: 'A deep dive.',
+          description: '<p>A deep <b>dive</b>.</p>',
+          descriptionText: 'A deep dive.',
           publishedAt: '2026-06-07T06:00:00Z',
           duration: 'PT44M11S',
           imageUrl: 'https://cdn.example.com/e2.png',
@@ -334,6 +335,9 @@ describe('<WikiPage> — reader', () => {
 
     const card = host.querySelector('.wiki__epcard');
     expect(card?.textContent).toContain('Letters from the Bottom of the Sea');
+    // The note is the plain text (SDK 0.16.0), not the feed's HTML printed as literal tags.
+    expect(card?.textContent).toContain('A deep dive.');
+    expect(card?.textContent).not.toContain('<p>');
     expect(card?.querySelector('img')?.getAttribute('src')).toBe('https://cdn.example.com/e2.png');
     // The citation carried @12:04, so the card links to the moment.
     expect(card?.getAttribute('href')).toContain('t=724');

@@ -30,7 +30,7 @@ export const WIKI_CSS = ICON_CSS + `
     margin: 0 auto;
     padding: 1.5rem 1rem 3rem;
   }
-  .wiki a { color: var(--mc-accent); text-decoration: none; }
+  .wiki a { color: var(--mc-accent-text); text-decoration: none; }
   .wiki a:hover, .wiki a:focus-visible { text-decoration: underline; }
   .wiki__bar {
     display: flex; flex-wrap: wrap; gap: .5rem; align-items: center;
@@ -47,7 +47,7 @@ export const WIKI_CSS = ICON_CSS + `
     border-radius: .5rem;
     font: inherit;
   }
-  .wiki__input:focus-visible { outline: 2px solid var(--mc-accent); outline-offset: 1px; }
+  .wiki__input:focus-visible { outline: 2px solid var(--mc-accent-text); outline-offset: 1px; }
   .wiki__btn {
     display: inline-flex; align-items: center; gap: .35rem;
     padding: .5rem .9rem;
@@ -181,7 +181,7 @@ export const WIKI_CSS = ICON_CSS + `
     color: var(--mc-text-muted); border: 1px solid transparent; border-radius: .375rem;
   }
   .wiki__iconbtn:hover { color: var(--mc-text); border-color: var(--mc-border); text-decoration: none; }
-  .wiki__iconbtn:focus-visible { outline: 2px solid var(--mc-accent); outline-offset: 1px; }
+  .wiki__iconbtn:focus-visible { outline: 2px solid var(--mc-accent-text); outline-offset: 1px; }
   .wiki__vh {
     position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0;
     overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0;
@@ -199,7 +199,7 @@ export const WIKI_CSS = ICON_CSS + `
   .wiki__langmenu > summary::-webkit-details-marker { display: none; }
   .wiki__langmenu > summary:hover,
   .wiki__langmenu[open] > summary { color: var(--mc-text); border-color: var(--mc-border); }
-  .wiki__langmenu > summary:focus-visible { outline: 2px solid var(--mc-accent); outline-offset: 1px; }
+  .wiki__langmenu > summary:focus-visible { outline: 2px solid var(--mc-accent-text); outline-offset: 1px; }
   .wiki__caret {
     width: 0; height: 0; margin-left: .1rem;
     border-left: .25rem solid transparent; border-right: .25rem solid transparent;
@@ -257,7 +257,7 @@ export const WIKI_CSS = ICON_CSS + `
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .875rem; line-height: 1.55;
     resize: vertical;
   }
-  .wiki__area:focus-visible { outline: 2px solid var(--mc-accent); outline-offset: 1px; }
+  .wiki__area:focus-visible { outline: 2px solid var(--mc-accent-text); outline-offset: 1px; }
   /* Two columns where there is room; the container query below stacks them on a phone. */
   .wiki__editor { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; align-items: start; }
   .wiki__preview {
@@ -303,7 +303,7 @@ export const WIKI_CSS = ICON_CSS + `
     font: inherit; font-size: .875rem; text-align: left; cursor: pointer;
   }
   .wiki__pickerlist button:hover { background: var(--mc-bg); }
-  .wiki__pickerlist button:focus-visible { outline: 2px solid var(--mc-accent); outline-offset: -2px; }
+  .wiki__pickerlist button:focus-visible { outline: 2px solid var(--mc-accent-text); outline-offset: -2px; }
   .wiki__pickerlist span { flex: 1 1 auto; }
   .wiki__pickerlist code {
     flex: none; color: var(--mc-text-muted);
@@ -370,7 +370,7 @@ export const WIKI_CSS = ICON_CSS + `
   .wiki__epcard:hover { border-color: var(--mc-accent); text-decoration: none; }
   .wiki__epcard img { flex: none; width: 4rem; height: 4rem; object-fit: cover; border-radius: .5rem; }
   .wiki__epcard-body { display: flex; flex-direction: column; gap: .15rem; min-width: 0; }
-  .wiki__epcard-title { color: var(--mc-accent); font-weight: 600; }
+  .wiki__epcard-title { color: var(--mc-accent-text); font-weight: 600; }
   .wiki__epcard-meta { color: var(--mc-text-muted); font-size: .8125rem; }
   .wiki__epcard-note {
     color: var(--mc-text-muted); font-size: .875rem;

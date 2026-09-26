@@ -12,7 +12,7 @@ Read the first two fully before writing code. Work in plan mode first.
 ### `docs/BRIEF.md` is stale — known corrections
 It predates SDK 0.4.0 and is a read-only spec, so the corrections live here. Where it disagrees with the SDK
 working tree or `mosaicast-plugin-sample`, the latter win.
-- `platformApi` is **`0.15.0`** (exact `major.minor` match; the docs' `"1.x"` does not even parse). Same
+- `platformApi` is **`0.16.0`** (exact `major.minor` match; the docs' `"1.x"` does not even parse). Same
   string in all four places — `plugin.json`, both gradle coordinates, `package.json` — and **none of them is
   a literal in a test**: `manifest.test.ts` compares against the SDK's own `PLATFORM_API_VERSION`, `ci.yml`
   compares the manifest against both gradle coordinates.
@@ -40,6 +40,7 @@ what is particular to this repo:
   host cannot police inside our tables. Resolve at render. An unknown or erased id is **absent from the
   answer**, not null in it — key a `Map` on the id. With no `identity`, attribute *nothing*: calling every
   live author "a former contributor" is a lie.
+- **Author HTML goes through `ctx.sanitize`, the wiki's own markup does not** (0.5.0, SDK 0.16.0). `markdown.ts` swaps each token for a nonce placeholder before parsing, sanitises, then restores the elements it built — into text nodes only. Never widen this by passing author HTML through the restore path, and never go back to a DOMPurify config: its defaults let `<style>` deface the site (SEC-C07).
 - **The ingest period goes through a `Supplier`, never a captured `Duration`** — the latter is read once in
   `register()` and held for the process, and it is the number deciding how long a save stays *queued*. The
   supplier runs on a scheduler thread: one config read, nothing blocking. `scheduledPeriods()` pins it.

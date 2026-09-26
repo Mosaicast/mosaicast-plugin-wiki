@@ -115,6 +115,7 @@ export function PageView({ ctx, i18n, slug, index, go }: PageViewProps) {
         // The host owns the shape of its own URLs, including the `?t=` a citation needs.
         ctx.links.episode(episode, seconds == null ? undefined : { t: seconds }),
       blobUrl: ctx.blobs ? (ref) => ctx.blobs!.urlFor(ref) : undefined,
+      sanitize: ctx.sanitize,
     });
   }, [ctx, page, index, sources.length]);
 

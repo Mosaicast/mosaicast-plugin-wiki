@@ -16,7 +16,38 @@ warned about, and every entry that moves it says so.
 
 ## [Unreleased]
 
-## [0.4.0] — unreleased
+## [0.5.0] — unreleased
+
+`platformApi` moves to **0.16.0** (core 0.7.4 or newer) — mandatory, the host matches on an exact
+`major.minor`. The contract minor came out of three test passes, and one of their findings was this plugin's.
+
+### Security
+
+- **A saved page can no longer restyle the site.** Page bodies were sanitised with
+  `DOMPurify.sanitize(html, { ADD_ATTR: ['target', 'rel'] })` — DOMPurify's defaults, which allow `<style>` and
+  `style=`. Under the plugin contract's `style-src 'unsafe-inline'`, a page containing
+  `<style>:host{position:fixed;inset:0;background:red;z-index:99999}</style>` covered the whole site for every
+  reader, anonymous included, and made the Save button unclickable even for its author; the same primitive
+  reaches CSS exfiltration of form values (audit SEC-C07). Everything an author writes now goes through
+  **`ctx.sanitize`**, the host's own feed-HTML policy. The wiki's own tokens (links, episode citations, sized
+  images) need attributes that policy rightly refuses an author, so they are swapped for placeholder words
+  before parsing and put back — into text nodes only — after sanitising; an author can no longer set `class`,
+  `data-*` or `style` by hand. The direct `dompurify` dependency is gone.
+
+### Fixed
+
+- **An episode card's note shows the show notes as text**, not the feed's HTML printed as literal tags: it
+  reads `descriptionText` (SDK 0.16.0) instead of `description`.
+
+### Changed
+
+- **Links and focus rings use `--mc-accent-text`**, the accent clamped to WCAG AA; a pale admin seed measured
+  1.12:1 as link text.
+- **Numeric settings declare their bounds** — `ingestIntervalSeconds` 1–86400, `revisionsKept` 1–10000,
+  `blobGraceMinutes` 0–10080, whole numbers — so core refuses a value outside them on save instead of storing
+  it. The backend's own floors stay.
+
+## [0.4.0] — 2026-09-17
 
 `platformApi` moves to **0.15.0** (core 0.7.2 or newer) — mandatory, since the host matches on an exact
 `major.minor` and rejects an older manifest at load rather than warning about it. The release exists to fix

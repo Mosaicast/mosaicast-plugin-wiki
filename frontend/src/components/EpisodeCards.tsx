@@ -87,8 +87,10 @@ export function EpisodeCard({
           {snapshot.duration ? ` · ${i18n.duration(snapshot.duration)}` : null}
           {seconds != null ? ` · ${i18n.t('page.fromMoment', { at: i18n.duration(seconds) })}` : null}
         </span>
-        {snapshot.subtitle || snapshot.description ? (
-          <span className="wiki__epcard-note">{snapshot.subtitle || snapshot.description}</span>
+        {/* `descriptionText`, not `description` (SDK 0.16.0): the latter is the feed's HTML, which React
+            printed here as literal tags. Plain text is what a one-line note on a card wants anyway. */}
+        {snapshot.subtitle || snapshot.descriptionText ? (
+          <span className="wiki__epcard-note">{snapshot.subtitle || snapshot.descriptionText}</span>
         ) : null}
       </span>
     </a>
