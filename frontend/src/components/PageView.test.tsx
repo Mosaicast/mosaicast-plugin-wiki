@@ -4,7 +4,7 @@
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { makeMockCtx, makeMockSchema, type MockSchemaClient } from '@mosaicast/plugin-sdk/testing';
+import { makeMockCtx, makeMockDocs, makeMockSchema, type MockSchemaClient } from '@mosaicast/plugin-sdk/testing';
 import { WikiPage } from './WikiPage';
 import { flush } from '../test-utils';
 
@@ -35,7 +35,7 @@ const schemaOf = (ctx: ReturnType<typeof makeMockCtx>) => ctx.schema as MockSche
 function ctxFor(path: string, rows: Record<string, Record<string, unknown>[]> = {}) {
   return makeMockCtx({
     route: { path },
-    apiResponses: { 'data/site/main/index': INDEX },
+    docs: makeMockDocs({ 'data/site/main/index': INDEX }),
     schema: makeMockSchema({ page: [KRAKEN], link: [], source: [], media: [], revision: [], ...rows }),
   });
 }
@@ -91,7 +91,7 @@ describe('<WikiPage> — reader', () => {
     const draft = { ...KRAKEN, id: 9, slug: 'half-written', title: 'Half written', status: 'draft' };
     const ctx = makeMockCtx({
       route: { path: 'half-written' },
-      apiResponses: { 'data/site/main/index': INDEX },
+      docs: makeMockDocs({ 'data/site/main/index': INDEX }),
       schema: makeMockSchema({ page: [draft], link: [], source: [], media: [], revision: [] }),
     });
 
@@ -116,13 +116,13 @@ describe('<WikiPage> — reader', () => {
     };
     const ctx = makeMockCtx({
       route: { path: 'the-kraken' },
-      apiResponses: {
+      docs: makeMockDocs({
         'data/site/main/index': {
           ...INDEX,
           'the-kraken': { ...INDEX['the-kraken'], locale: 'en', translationOf: null },
           ...german,
         },
-      },
+      }),
       schema: makeMockSchema({
         page: [{ ...KRAKEN, locale: 'en', translationOf: null }],
         link: [],
@@ -186,13 +186,13 @@ describe('<WikiPage> — reader', () => {
     // is then the only thing naming the control.
     const ctx = makeMockCtx({
       route: { path: 'the-kraken' },
-      apiResponses: {
+      docs: makeMockDocs({
         'data/site/main/index': {
           ...INDEX,
           'the-kraken': { ...INDEX['the-kraken'], locale: 'en', translationOf: null },
           'der-krake': { title: 'Der Krake', summary: null, tags: null, updatedAt: null, locale: 'de', translationOf: 'the-kraken' },
         },
-      },
+      }),
       schema: makeMockSchema({ page: [{ ...KRAKEN, locale: 'en' }], link: [], source: [], media: [], revision: [] }),
       locale: {
         current: () => 'en',
@@ -230,7 +230,7 @@ describe('<WikiPage> — reader', () => {
   it('marks a link to an unwritten page as missing', async () => {
     const ctx = makeMockCtx({
       route: { path: 'the-kraken' },
-      apiResponses: { 'data/site/main/index': { 'the-kraken': INDEX['the-kraken'] } },
+      docs: makeMockDocs({ 'data/site/main/index': { 'the-kraken': INDEX['the-kraken'] } }),
       schema: makeMockSchema({ page: [KRAKEN], link: [], source: [], media: [], revision: [] }),
     });
 

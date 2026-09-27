@@ -4,7 +4,7 @@
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { makeMockCtx } from '@mosaicast/plugin-sdk/testing';
+import { makeMockCtx, makeMockDocs } from '@mosaicast/plugin-sdk/testing';
 import { WikiPage } from './WikiPage';
 import { flush } from '../test-utils';
 
@@ -36,15 +36,16 @@ describe('<WikiPage>', () => {
   };
 
   it('reads the page index from the site scope', async () => {
-    const ctx = makeMockCtx({ apiResponses: { 'data/site/main/index': {} } });
+    const docs = makeMockDocs({ 'data/site/main/index': {} });
+    const ctx = makeMockCtx({ docs });
 
     await render(ctx);
 
-    expect(ctx.api.calls).toContainEqual({ method: 'get', path: 'data/site/main/index' });
+    expect(docs.calls).toContainEqual({ method: 'get', partitions: ['data/site/main'], keys: ['index'] });
   });
 
   it('states that the wiki is empty rather than rendering a blank tile', async () => {
-    const ctx = makeMockCtx({ apiResponses: { 'data/site/main/index': {} } });
+    const ctx = makeMockCtx({ docs: makeMockDocs({ 'data/site/main/index': {} }) });
 
     await render(ctx);
 
@@ -65,11 +66,11 @@ describe('<WikiPage>', () => {
 
   it('lists the pages the index carries', async () => {
     const ctx = makeMockCtx({
-      apiResponses: {
+      docs: makeMockDocs({
         'data/site/main/index': {
           'the-kraken': { title: 'The Kraken', summary: 'A very large squid.', tags: 'lore', updatedAt: '2026-08-01T10:00:00Z' },
         },
-      },
+      }),
     });
 
     await render(ctx);
@@ -81,9 +82,9 @@ describe('<WikiPage>', () => {
 
   it('navigates within its own subtree instead of reloading the shell', async () => {
     const ctx = makeMockCtx({
-      apiResponses: {
+      docs: makeMockDocs({
         'data/site/main/index': { 'the-kraken': { title: 'The Kraken', summary: null, tags: null, updatedAt: null } },
-      },
+      }),
     });
     await render(ctx);
 
@@ -97,9 +98,9 @@ describe('<WikiPage>', () => {
 
   it('keeps a real href so middle-click and crawlers still work', async () => {
     const ctx = makeMockCtx({
-      apiResponses: {
+      docs: makeMockDocs({
         'data/site/main/index': { 'the-kraken': { title: 'The Kraken', summary: null, tags: null, updatedAt: null } },
-      },
+      }),
     });
 
     await render(ctx);
@@ -109,7 +110,7 @@ describe('<WikiPage>', () => {
   });
 
   it('sends a search to its own _search route, as a query parameter', async () => {
-    const ctx = makeMockCtx({ apiResponses: { 'data/site/main/index': {} } });
+    const ctx = makeMockCtx({ docs: makeMockDocs({ 'data/site/main/index': {} }) });
     await render(ctx);
 
     const input = host.querySelector<HTMLInputElement>('input[type="search"]')!;

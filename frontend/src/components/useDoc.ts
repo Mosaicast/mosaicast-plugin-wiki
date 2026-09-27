@@ -4,7 +4,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { PluginContext } from '@mosaicast/plugin-sdk';
 import { isPluginApiError } from '@mosaicast/plugin-sdk';
-import { SITE_PATH } from '../types';
 
 /** What a fetch is doing right now. `error` never carries a server message — the UI translates its own. */
 export interface Loaded<T> {
@@ -16,9 +15,9 @@ export interface Loaded<T> {
 /**
  * Reads one site-scoped doc key.
  *
- * A **404 is not a failure** here: an absent document is the correct answer for a wiki nobody has written
- * to yet, and treating it as an error would show a scary tile on a healthy empty install. Anything else is
- * reported, because a 403 (a misdeclared `readableBy` floor) must not look like emptiness.
+ * **Absence is not a failure** here (the host's 204): an absent document is the correct answer for a
+ * wiki nobody has written to yet, and treating it as an error would show a scary tile on a healthy empty
+ * install. Anything else is reported, because a 403 (a misdeclared `readableBy` floor) must not look like emptiness.
  *
  * **A reassigned `ctx` refetches but does not blank.** The host hands a new context object on a login, a
  * theme change, a language change and any other render of its own, and this hook re-reads on each — which
@@ -43,12 +42,13 @@ export function useSiteDoc<T>(ctx: PluginContext, key: string): Loaded<T> {
       setState({ data: null, loading: true, failed: false });
     }
 
-    // `getOrNull` resolves an absent document to null instead of rejecting. Before SDK 0.9 this was a
-    // `catch` that sniffed the message for "404" -- which also swallowed the 403 and the 500 it could not
-    // tell apart, and a plugin silently showing an empty tile is exactly how a misdeclared read floor
-    // hides.
-    ctx.api
-      .getOrNull<T>(`${SITE_PATH}/${key}`)
+    // `ctx.docs.get` resolves an absent document to null and rejects everything else, so a 403 (a
+    // misdeclared read floor) still reads as a failure rather than as an empty wiki. It also collapses
+    // concurrent reads of one key into one request -- four components read `index`. Its remembered misses
+    // last 30 s and end on navigation (core 0.7.5), which only a key the backend writes later could
+    // notice; the receipt poll in the editor is that key, and goes around it.
+    ctx.docs
+      .get<T>('site', key)
       .then((data) => {
         if (!cancelled) {
           shownKey.current = key;

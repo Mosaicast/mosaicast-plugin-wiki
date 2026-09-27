@@ -20,8 +20,8 @@ warned about, and every entry that moves it says so.
 
 `platformApi` moves to **0.16.1** (core 0.7.4 or newer) — mandatory, the host matches on an exact
 `major.minor`, and the patch floats. The contract minor came out of three test passes, and one of their findings
-was this plugin's. A resumed numbered list and table alignment need a core built on SDK 0.16.1; on 0.7.4 they
-render as before, renumbered and unaligned.
+was this plugin's. A resumed numbered list and table alignment need core **0.7.5** (built on SDK 0.16.1); on
+0.7.4 they render as before, renumbered and unaligned.
 
 ### Security
 
@@ -51,6 +51,10 @@ render as before, renumbered and unaligned.
 
 ### Changed
 
+- **Doc reads and writes go through `ctx.docs`**, not hand-built `data/site/main/…` paths on `ctx.api`. Four
+  components read `index`, and the host's client now answers concurrent reads of one key with one request; the media library and the dashboard use `ctx.docs.list`. The one exception is the editor's receipt
+  poll, which stays on `ctx.api` on purpose: the docs client remembers a miss for 30 s, and "no receipt yet"
+  is exactly the answer that poll re-asks until it changes.
 - **Links and focus rings use `--mc-accent-text`**, the accent clamped to WCAG AA; a pale admin seed measured
   1.12:1 as link text.
 - **Numeric settings declare their bounds** — `ingestIntervalSeconds` 1–86400, `revisionsKept` 1–10000,

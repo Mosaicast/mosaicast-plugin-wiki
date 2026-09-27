@@ -8,13 +8,18 @@ import {
   apiError,
   makeMockBlobs,
   makeMockCtx,
+  makeMockDocs,
   makeMockSchema,
+  type MockDocClient,
   makeMockTranslation,
   type MockSchemaClient,
 } from '@mosaicast/plugin-sdk/testing';
 import { WikiPage } from './WikiPage';
 import { flush, mockUser } from '../test-utils';
 import { clearTranslation, peekTranslation } from '../translate';
+
+/** The in-memory doc store behind a mock ctx — the editor writes through `ctx.docs`, not `ctx.api`. */
+const docsOf = (ctx: ReturnType<typeof makeMockCtx>) => ctx.docs as MockDocClient;
 
 const KRAKEN = {
   id: 1,
@@ -39,7 +44,7 @@ function ctxFor(path: string, overrides: Parameters<typeof makeMockCtx>[0] = {})
   return makeMockCtx({
     route: { path },
     user: PODCASTER,
-    apiResponses: { 'data/site/main/index': INDEX },
+    docs: makeMockDocs({ 'data/site/main/index': INDEX }),
     schema: makeMockSchema({ page: [KRAKEN], link: [], source: [], media: [], revision: [] }),
     blobs: makeMockBlobs(),
     ...overrides,
@@ -150,9 +155,7 @@ describe('<EditorView>', () => {
     await type('#wiki-body', 'Seen off Norway and Greenland.');
     await submit();
 
-    const put = ctx.api.calls.find((call) => call.method === 'put');
-    expect(put?.path).toBe('data/site/main/draft:the-kraken');
-    expect(put?.body).toMatchObject({
+    expect(docsOf(ctx).stored['data/site/main/draft:the-kraken']).toMatchObject({
       title: 'The Kraken',
       markdown: 'Seen off Norway and Greenland.',
       tags: ['lore', 'sea'],
@@ -178,7 +181,7 @@ describe('<EditorView>', () => {
     await pick('#wiki-locale', 'de');
     await submit();
 
-    expect(ctx.api.calls.find((call) => call.method === 'put')?.body).toMatchObject({
+    expect(docsOf(ctx).stored['data/site/main/draft:the-kraken']).toMatchObject({
       locale: 'de',
       translationOf: null,
     });
@@ -217,7 +220,7 @@ describe('<EditorView>', () => {
         media: [],
         revision: [],
       }),
-      apiResponses: {
+      docs: makeMockDocs({
         'data/site/main/index': {
           ...INDEX,
           'der-krake': {
@@ -237,7 +240,7 @@ describe('<EditorView>', () => {
             translationOf: null,
           },
         },
-      },
+      }),
     });
     await render(ctx);
 
@@ -270,7 +273,7 @@ describe('<EditorView>', () => {
     expect(translation.requests.every((request) => request.to === 'de')).toBe(true);
     expect(host.querySelector('.wiki__machine')?.textContent).toContain('[de]');
     // The whole posture of this feature: a machine draft is a proposal, and nothing reached the store.
-    expect(ctx.api.calls.filter((call) => call.method === 'put')).toEqual([]);
+    expect(docsOf(ctx).calls.filter((call) => call.method === 'put')).toEqual([]);
   });
 
   it('says a refusal out loud rather than falling back to the untranslated original', async () => {
@@ -364,19 +367,17 @@ describe('<EditorView>', () => {
     await flush();
     await flush();
 
-    const filed = ctx.api.calls.find((call) => call.method === 'put' && call.path.includes('/asset:'));
-    expect(filed?.body).toMatchObject({ name: 'kraken photo', mime: 'image/png' });
+    const filed = Object.entries(docsOf(ctx).stored).find(([path]) => path.startsWith('data/site/main/asset:'));
+    expect(filed?.[1]).toMatchObject({ name: 'kraken photo', mime: 'image/png' });
     expect(host.querySelector<HTMLTextAreaElement>('#wiki-body')?.value).toContain('](blob:');
   });
 
   it('offers what is already in the library rather than a second upload', async () => {
     const ctx = ctxFor('the-kraken/edit', {
-      apiResponses: {
+      docs: makeMockDocs({
         'data/site/main/index': INDEX,
-        'data/site/main?prefix=asset:&size=100': {
-          items: [{ key: 'asset:abc-123', value: { name: 'The kraken photo', mime: 'image/png' } }],
-        },
-      },
+        'data/site/main/asset:abc-123': { name: 'The kraken photo', mime: 'image/png' },
+      }),
     });
     await render(ctx);
 
@@ -391,12 +392,10 @@ describe('<EditorView>', () => {
   it('inserts a library image at the size and placement chosen in the box', async () => {
     // The syntax is now something an author can discover rather than has to know.
     const ctx = ctxFor('the-kraken/edit', {
-      apiResponses: {
+      docs: makeMockDocs({
         'data/site/main/index': INDEX,
-        'data/site/main?prefix=asset:&size=100': {
-          items: [{ key: 'asset:abc-123', value: { name: 'The kraken photo', mime: 'image/png' } }],
-        },
-      },
+        'data/site/main/asset:abc-123': { name: 'The kraken photo', mime: 'image/png' },
+      }),
     });
     await render(ctx);
 
@@ -412,12 +411,10 @@ describe('<EditorView>', () => {
 
   it('defaults to the plain token, so leaving the box alone changes nothing', async () => {
     const ctx = ctxFor('the-kraken/edit', {
-      apiResponses: {
+      docs: makeMockDocs({
         'data/site/main/index': INDEX,
-        'data/site/main?prefix=asset:&size=100': {
-          items: [{ key: 'asset:abc-123', value: { name: 'The kraken photo', mime: 'image/png' } }],
-        },
-      },
+        'data/site/main/asset:abc-123': { name: 'The kraken photo', mime: 'image/png' },
+      }),
     });
     await render(ctx);
 
@@ -520,8 +517,9 @@ describe('<EditorView>', () => {
   it('reports the conflict the backend recorded, without losing the writing', async () => {
     vi.useFakeTimers();
     const ctx = ctxFor('the-kraken/edit', {
+      docs: makeMockDocs({ 'data/site/main/index': INDEX }),
+      // The receipt poll reads through `ctx.api`, past the docs client's memory of a miss.
       apiResponses: {
-        'data/site/main/index': INDEX,
         'data/site/main/ingest:the-kraken': {
           state: 'conflict',
           detail: 'edited from revision 3, now at 4',
@@ -552,7 +550,7 @@ describe('<EditorView>', () => {
     await submit();
 
     expect(host.textContent).toContain('A page already lives at the-kraken.');
-    expect(ctx.api.calls.filter((call) => call.method === 'put')).toHaveLength(0);
+    expect(docsOf(ctx).calls.filter((call) => call.method === 'put')).toHaveLength(0);
   });
 
   it('derives the address from the title until someone edits it', async () => {
@@ -575,7 +573,7 @@ describe('<EditorView>', () => {
     });
     await flush();
 
-    expect(ctx.api.calls.some((call) => call.method === 'put' && call.path === 'data/site/main/delete:the-kraken')).toBe(true);
+    expect('data/site/main/delete:the-kraken' in docsOf(ctx).stored).toBe(true);
   });
 
   it('does not delete when the confirmation is declined', async () => {
@@ -589,7 +587,7 @@ describe('<EditorView>', () => {
     });
     await flush();
 
-    expect(ctx.api.calls.some((call) => call.path.startsWith('data/site/main/delete:'))).toBe(false);
+    expect(Object.keys(docsOf(ctx).stored).some((path) => path.startsWith('data/site/main/delete:'))).toBe(false);
   });
 
   it('previews the body through the same sanitiser the reader uses', async () => {

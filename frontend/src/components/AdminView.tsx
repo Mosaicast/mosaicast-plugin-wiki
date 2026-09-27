@@ -4,7 +4,7 @@
 import { useEffect, useState } from 'react';
 import type { PluginContext } from '@mosaicast/plugin-sdk';
 import { routeHref, type WikiRoute } from '../routes';
-import { KEY_STATS, SITE_PATH, type LinkRow, type MediaRow, type PageSummary, type WikiStats } from '../types';
+import { KEY_STATS, type LinkRow, type MediaRow, type PageSummary, type WikiStats } from '../types';
 import type { PluginI18n } from '../i18n';
 import { Icon } from '../icons';
 import { describeApiError } from './useDoc';
@@ -53,16 +53,14 @@ export function AdminView({ ctx, i18n, index, go }: AdminViewProps) {
 
     const load = async (): Promise<Dashboard> => {
       const [stats, wikiLinks, media, drafts, receipts, quota] = await Promise.all([
-        ctx.api.getOrNull<WikiStats>(`${SITE_PATH}/${KEY_STATS}`),
+        ctx.docs.get<WikiStats>('site', KEY_STATS),
         schema?.select<LinkRow>('link', {
           where: [{ field: 'kind', op: 'eq', value: 'wiki' }],
           size: 500,
         }) ?? Promise.resolve({ items: [] as LinkRow[] }),
         schema?.select<MediaRow>('media', { size: 500 }) ?? Promise.resolve({ items: [] as MediaRow[] }),
-        ctx.api.get<{ items: { key: string }[] }>(`${SITE_PATH}?prefix=draft:&size=100`),
-        ctx.api.get<{ items: { key: string; value: { state: string; detail: string | null } }[] }>(
-          `${SITE_PATH}?prefix=ingest:&size=200`,
-        ),
+        ctx.docs.list('site', { prefix: 'draft:', size: 100 }),
+        ctx.docs.list<{ state: string; detail: string | null }>('site', { prefix: 'ingest:', size: 200 }),
         ctx.blobs?.quota() ?? Promise.resolve(null),
       ]);
 

@@ -4,7 +4,7 @@
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { makeMockCtx, makeMockSchema } from '@mosaicast/plugin-sdk/testing';
+import { makeMockCtx, makeMockDocs, makeMockSchema } from '@mosaicast/plugin-sdk/testing';
 import { WikiPage } from './WikiPage';
 import { flush, mockUser } from '../test-utils';
 
@@ -24,7 +24,7 @@ const HOME = {
 function ctxFor(overrides: Parameters<typeof makeMockCtx>[0] = {}, home: unknown = HOME) {
   return makeMockCtx({
     route: { path: '' },
-    apiResponses: { 'data/site/main/index': INDEX, ...(home ? { 'data/site/main/home': home } : {}) },
+    docs: makeMockDocs({ 'data/site/main/index': INDEX, ...(home ? { 'data/site/main/home': home } : {}) }),
     schema: makeMockSchema({ page: [], link: [], source: [], media: [], revision: [] }),
     ...overrides,
   });
@@ -150,7 +150,7 @@ describe('the article lead', () => {
   const readerFor = (summary: string, markdown: string) =>
     makeMockCtx({
       route: { path: 'the-kraken' },
-      apiResponses: { 'data/site/main/index': INDEX },
+      docs: makeMockDocs({ 'data/site/main/index': INDEX }),
       schema: makeMockSchema({
         page: [{ id: 1, slug: 'the-kraken', title: 'The Kraken', summary, markdown, searchText: '', tags: '', status: 'published', updatedAt: null, revisionNo: 1 }],
         link: [], source: [], media: [], revision: [],

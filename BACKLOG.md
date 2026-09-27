@@ -83,13 +83,9 @@ resolved wiki link. The phase-1 images stay in the folder — earlier PRs link t
 
 ## 4. Filed elsewhere, not ours to fix
 
-Two stale claims in the `writing-a-mosaicast-plugin` skill (`mosaicast-skills`), reported 2026-09-02:
-
-- `SKILL.md` still tells you to run `dev/screenshots.sh up`; core renamed it to `dev/instance.sh`, and
-  `--plugins` is now required because the default loads none.
-- It describes `mosaicast-plugin-sample` as **v2.10.0 on SDK 0.8.0**. The installed sample is **v2.14.0 on
-  platformApi 0.12.0**, so it is a usable reference for `tags` / `feeds` / `docs` / `external` / `nav`
-  again.
+~~Two stale claims in the `writing-a-mosaicast-plugin` skill~~ — **fixed upstream** by skill 0.10.1
+(2026-09-27): it documents `dev/instance.sh --name <plugin> up --plugin-dir …` and names the sample's current
+tag. `CLAUDE.md`'s live-testing section follows it.
 
 ---
 

@@ -359,8 +359,8 @@ export function EditorView({ ctx, i18n, slug, index, go }: EditorViewProps) {
       // File it in the library on the way past, so the same picture never has to be uploaded twice. This
       // is also what keeps it alive: the backend's sweep counts a ref named here as referenced, so a file
       // uploaded and not yet placed survives the grace period.
-      await ctx.api
-        .put(`${SITE_PATH}/${assetKey(stored.ref)}`, {
+      await ctx.docs
+        .put('site', assetKey(stored.ref), {
           name,
           mime: stored.mime,
           addedBy: ctx.user?.id ?? null,
@@ -398,7 +398,7 @@ export function EditorView({ ctx, i18n, slug, index, go }: EditorViewProps) {
 
     setSave({ phase: 'queued' });
     try {
-      await ctx.api.put(`${SITE_PATH}/${draftKey(slugToWrite)}`, {
+      await ctx.docs.put('site', draftKey(slugToWrite), {
         title: title.trim(),
         summary: summary.trim(),
         markdown,
@@ -427,7 +427,10 @@ export function EditorView({ ctx, i18n, slug, index, go }: EditorViewProps) {
     pollRef.current = window.setInterval(async () => {
       let receipt: IngestReceipt | null = null;
       try {
-        receipt = await ctx.api.get<IngestReceipt>(`${SITE_PATH}/ingest:${slugToWatch}`);
+        // `ctx.api`, not `ctx.docs`, on purpose: the docs client remembers a miss for 30 s, and "no receipt
+        // yet" is exactly the answer this loop asks again every few seconds until it changes. Through the
+        // cache, a save would look queued for up to one extra ingest period after it landed.
+        receipt = (await ctx.api.get<IngestReceipt>(`${SITE_PATH}/ingest:${slugToWatch}`)) ?? null;
       } catch {
         receipt = null; // no receipt yet is the normal state right after a save
       }
@@ -511,7 +514,7 @@ export function EditorView({ ctx, i18n, slug, index, go }: EditorViewProps) {
     setSave({ phase: 'queued' });
     try {
       // A tombstone, not a delete: the cascade across four entities is the backend's to run.
-      await ctx.api.put(`${SITE_PATH}/${deleteKey(slug)}`, { requestedBy: ctx.user?.id ?? null });
+      await ctx.docs.put('site', deleteKey(slug), { requestedBy: ctx.user?.id ?? null });
       pollReceipt(slug);
     } catch (error: unknown) {
       ctx.log('warn', `wiki: delete could not be requested: ${String(error)}`);
@@ -1050,8 +1053,8 @@ function InsertPicker({
       return;
     }
     let cancelled = false;
-    ctx.api
-      .get<{ items: { key: string; value: AssetDoc }[] }>(`${SITE_PATH}?prefix=${ASSET_PREFIX}&size=100`)
+    ctx.docs
+      .list<AssetDoc>('site', { prefix: ASSET_PREFIX, size: 100 })
       .then((page) => {
         if (!cancelled) {
           setLibrary(

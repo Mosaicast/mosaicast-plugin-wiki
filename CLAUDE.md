@@ -76,34 +76,31 @@ scripts/set-version.sh <x.y.z>                  # the plugin's own version, all 
 
 ## Live testing (do this every phase)
 ```
-./build.sh && rm -rf ../mosaicast-core/plugins/wiki && cp -r dist ../mosaicast-core/plugins/wiki
-cd ../mosaicast-core && dev/instance.sh up --plugins --admin  # :8081, fleeting PG :5433, sample feed
-#   dev-login: POST /api/auth/dev-login?role=podcaster|fan|admin (prime /api/meta, send X-XSRF-TOKEN)
-dev/instance.sh status | logs [-f] | psql | down
+./build.sh && cd ../mosaicast-core
+dev/instance.sh --name wiki up --plugin-dir ../mosaicast-plugin-wiki/dist   # fleeting PG, sample feed
+source <(dev/instance.sh --name wiki env)    # MC_APP_URL, MC_APP_PORT, … — ports are allocated
+#   dev-login: POST $MC_APP_URL/api/auth/dev-login?role=podcaster|fan|admin (prime /api/meta, send X-XSRF-TOKEN)
+dev/instance.sh --name wiki status | logs [-f] | psql | down        # dev/instance.sh ls: everyone's
 ```
-`instance.sh` replaced `screenshots.sh` and needs `--plugins`. Disposable, seeded only with the sample
-feed. Core loads plugins **at startup only**: a rebuilt backend needs a restart, a rebuilt bundle does not.
-Capture light and dark at 375×667, 768×1024, 1280×800 into `assets/screenshots/` for the PR.
+**Always `--name wiki`, and only ever `up`/`down` that name** — core, SDK, sample, bingo and stats sessions run
+their own instances beside it. A named instance runs `origin/master`'s core as a cached jar (`--core REF`
+pins another) and copies `dist/` in at `up`, so a rebuild — bundle included — reaches it only by `down` and
+`up`. Needing a second plugin: pass another `--plugin-dir` with a sister repo's existing `dist/`, or build a
+copy of it in the scratchpad — never in its tree. Browse on **`127.0.0.1:<port>`**: cookies are per host,
+not port, so `localhost` logs the sister instances out. Capture light and dark at 375×667, 768×1024,
+1280×800 into `assets/screenshots/` for a PR that changes what renders.
 
-**Six ways this loop lies to you, all seen in practice:**
-1. **`up` accepts a stale instance.** Its health check answers from an app already running, so a rebuilt
-   plugin never loads and you test the previous build. After `down`, wait until
-   `curl -sf localhost:8081/actuator/health` *fails* before `up`.
-2. **Never wrap `up` in `timeout`, and don't background it.** The app is a grandchild of the call; when that
-   process group is reaped the JVM dies mid-test. Symptom: `curl` returns `000`, and a fresh fleeting
-   Postgres makes every schema table look empty — which reads exactly like a bug in your own code.
-3. **Check what you shipped.** A build in a call that then times out leaves a *stale* bundle installed, and
-   the symptom is a feature behaving as if never written. `grep -c <a-new-class> dist/assets/wiki.es.js`.
-4. **Don't run `./build.sh` while the stack is up** — a second Gradle invocation can take the bootRun daemon
-   with it. Build, install, then boot.
-5. **An env var you export does not reach the app.** `bootRun`'s JVM forks from the long-lived Gradle daemon
-   and inherits *its* environment. Pass `--args="… --some.property=value"`, or `./gradlew --stop` first.
-6. **The ingest tick is 30s.** Poll in one command that waits for the result; a `curl` typed between two
+**Three ways this loop lies to you, all seen in practice:**
+1. **Check what you shipped.** A build in a call that then times out leaves a *stale* `dist/`, and the
+   symptom is a feature behaving as if never written. `grep -c <a-new-class> dist/assets/wiki.es.js`.
+2. **Never wrap `up` in `timeout`, and don't background it.** Symptom: `curl` returns `000`, and a fresh
+   fleeting Postgres makes every schema table look empty — which reads exactly like a bug in your own code.
+3. **The ingest tick is 30s.** Poll in one command that waits for the result; a `curl` typed between two
    others races the tick and reads the state from before your write.
 
 Translation needs three things true at once: LibreTranslate on `:5000`, core booted with
-`--mosaicast.external.allowed-private-origins=http://localhost:5000` (exact origins, not a subnet; the env
-spelling is subject to trap 5), and the provider selected — `PUT /api/admin/external/translation/providers/
+`MOSAICAST_EXTERNAL_ALLOWEDPRIVATEORIGINS=http://localhost:5000` exported before `up` (exact origins, not a
+subnet; `instance.sh` passes no extra `--args`, and a named instance's `java` inherits the caller's env — read from the script, not yet exercised), and the provider selected — `PUT /api/admin/external/translation/providers/
 libretranslate/settings {"baseUrl":…}`, then `…/translation/provider`, then `POST …/translation/test`.
 German is a content language on a fresh install (**Admin → Languages** changes that); with only one, the
 whole language UI is correctly invisible.

@@ -4,7 +4,7 @@
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { makeMockCtx, makeMockSchema, makeMockUsers } from '@mosaicast/plugin-sdk/testing';
+import { makeMockCtx, makeMockDocs, makeMockSchema, makeMockUsers } from '@mosaicast/plugin-sdk/testing';
 import { WikiPage } from './WikiPage';
 import { flush } from '../test-utils';
 
@@ -50,7 +50,7 @@ const INDEX = {
 function ctxFor(path: string, users: ReturnType<typeof makeMockUsers> | null) {
   return makeMockCtx({
     route: { path },
-    apiResponses: { 'data/site/main/index': INDEX },
+    docs: makeMockDocs({ 'data/site/main/index': INDEX }),
     schema: makeMockSchema({ page: [PAGE], revision: REVISIONS, link: [], source: [], media: [] }),
     users,
   });
