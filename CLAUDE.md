@@ -12,10 +12,10 @@ Read the first two fully before writing code. Work in plan mode first.
 ### `docs/BRIEF.md` is stale — known corrections
 It predates SDK 0.4.0 and is a read-only spec, so the corrections live here. Where it disagrees with the SDK
 working tree or `mosaicast-plugin-sample`, the latter win.
-- `platformApi` is **`0.16.1`** (exact `major.minor` match; the docs' `"1.x"` does not even parse). Same
-  string in all four places — `plugin.json`, both gradle coordinates, `package.json` — and **none of them is
-  a literal in a test**: `manifest.test.ts` compares against the SDK's own `PLATFORM_API_VERSION`, `ci.yml`
-  compares the manifest against both gradle coordinates.
+- `platformApi` is **`0.17.0`** (core 0.7.6+; exact `major.minor` match; the docs' `"1.x"` does not even
+  parse). Same string in all four places — `plugin.json`, both gradle coordinates, `package.json` — and **none
+  of them is a literal in a test**: `manifest.test.ts` compares against the SDK's own `PLATFORM_API_VERSION`,
+  `ci.yml` compares the manifest against both gradle coordinates.
 - Its `site / main` slot **renders nowhere** (`main` is the episode page body), and so does
   `placement: "admin"` — both validate. Hence `page` + `site`, and tooling at `/p/wiki/_admin`.
 
@@ -82,13 +82,14 @@ source <(dev/instance.sh --name wiki env)    # MC_APP_URL, MC_APP_PORT, … — 
 #   dev-login: POST $MC_APP_URL/api/auth/dev-login?role=podcaster|fan|admin (prime /api/meta, send X-XSRF-TOKEN)
 dev/instance.sh --name wiki status | logs [-f] | psql | down        # dev/instance.sh ls: everyone's
 ```
-**Always `--name wiki`, and only ever `up`/`down` that name** — core, SDK, sample, bingo and stats sessions run
-their own instances beside it. A named instance runs `origin/master`'s core as a cached jar (`--core REF`
-pins another) and copies `dist/` in at `up`, so a rebuild — bundle included — reaches it only by `down` and
-`up`. Needing a second plugin: pass another `--plugin-dir` with a sister repo's existing `dist/`, or build a
-copy of it in the scratchpad — never in its tree. Browse on **`127.0.0.1:<port>`**: cookies are per host,
-not port, so `localhost` logs the sister instances out. Capture light and dark at 375×667, 768×1024,
-1280×800 into `assets/screenshots/` for a PR that changes what renders.
+**Always `--name wiki`, and only ever `up`/`down` that name** — core, SDK, sample, bingo and stats sessions
+run their own instances beside it. A named instance runs `origin/master`'s core as a cached jar (`--core REF`
+pins another) and copies `dist/` in at `up`; **`--name wiki restart`** copies it again and reboots the app
+with the database, feed, ports and episode ids kept (`--core origin/master` moves core too). Needing a second
+plugin: pass another `--plugin-dir` with a sister repo's existing `dist/`, or build a copy of it in the
+scratchpad — never in its tree. Browse on **`127.0.0.1:<port>`**: cookies are per host, not port, so
+`localhost` logs the sister instances out. Capture light and dark at 375×667, 768×1024, 1280×800 into
+`assets/screenshots/` for a PR that changes what renders.
 
 **Three ways this loop lies to you, all seen in practice:**
 1. **Check what you shipped.** A build in a call that then times out leaves a *stale* `dist/`, and the
@@ -99,9 +100,10 @@ not port, so `localhost` logs the sister instances out. Capture light and dark a
    others races the tick and reads the state from before your write.
 
 Translation needs three things true at once: LibreTranslate on `:5000`, core booted with
-`MOSAICAST_EXTERNAL_ALLOWEDPRIVATEORIGINS=http://localhost:5000` exported before `up` (exact origins, not a
-subnet; `instance.sh` passes no extra `--args`, and a named instance's `java` inherits the caller's env — read from the script, not yet exercised), and the provider selected — `PUT /api/admin/external/translation/providers/
-libretranslate/settings {"baseUrl":…}`, then `…/translation/provider`, then `POST …/translation/test`.
+`--app-arg --mosaicast.external.allowed-private-origins=http://localhost:5000` on `up` (exact origins, not
+a subnet; `restart` replays it, a later `up` does not), and the provider selected —
+`PUT /api/admin/external/translation/providers/libretranslate/settings {"baseUrl":…}`, then
+`…/translation/provider`, then `POST …/translation/test`.
 German is a content language on a fresh install (**Admin → Languages** changes that); with only one, the
 whole language UI is correctly invisible.
 
