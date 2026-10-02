@@ -18,10 +18,10 @@ warned about, and every entry that moves it says so.
 
 ## [0.5.0] — unreleased
 
-`platformApi` moves to **0.16.1** (core 0.7.4 or newer) — mandatory, the host matches on an exact
-`major.minor`, and the patch floats. The contract minor came out of three test passes, and one of their findings
-was this plugin's. A resumed numbered list and table alignment need core **0.7.5** (built on SDK 0.16.1); on
-0.7.4 they render as before, renumbered and unaligned.
+`platformApi` moves to **0.17.0** (core **0.7.6** or newer) — mandatory, the host matches on an exact
+`major.minor`, so core 0.7.5 and older refuse this build. The 0.16 minor came out of three test passes, and one
+of their findings was this plugin's; 0.17 adds nothing the wiki calls, but a 0.16 plugin no longer loads on
+0.7.6. PF4J moves to **3.16.0** with the SDK (0.16.2), the version core loads plugins with.
 
 ### Security
 
@@ -51,10 +51,13 @@ was this plugin's. A resumed numbered list and table alignment need core **0.7.5
 
 ### Changed
 
+- **The episode picker offers every episode.** Nothing changed here: core 0.7.6 stopped cutting `ctx.episodes`
+  off at 200, which a long-running show's citation picker had silently hit.
 - **Doc reads and writes go through `ctx.docs`**, not hand-built `data/site/main/…` paths on `ctx.api`. Four
-  components read `index`, and the host's client now answers concurrent reads of one key with one request; the media library and the dashboard use `ctx.docs.list`. The one exception is the editor's receipt
-  poll, which stays on `ctx.api` on purpose: the docs client remembers a miss for 30 s, and "no receipt yet"
-  is exactly the answer that poll re-asks until it changes.
+  components read `index`, and the host's client now answers concurrent reads of one key with one request;
+  the media library and the dashboard use `ctx.docs.list`. The one exception is the editor's receipt poll,
+  which stays on `ctx.api` on purpose: the docs client remembers a miss for 30 s, and "no receipt yet" is
+  exactly the answer that poll re-asks until it changes.
 - **Links and focus rings use `--mc-accent-text`**, the accent clamped to WCAG AA; a pale admin seed measured
   1.12:1 as link text.
 - **Numeric settings declare their bounds** — `ingestIntervalSeconds` 1–86400, `revisionsKept` 1–10000,
