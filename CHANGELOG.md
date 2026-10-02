@@ -16,7 +16,55 @@ warned about, and every entry that moves it says so.
 
 ## [Unreleased]
 
-## [0.4.0] — unreleased
+## [0.5.0] — unreleased
+
+`platformApi` moves to **0.17.0** (core **0.7.6** or newer) — mandatory, the host matches on an exact
+`major.minor`, so core 0.7.5 and older refuse this build. The 0.16 minor came out of three test passes, and one
+of their findings was this plugin's; 0.17 adds nothing the wiki calls, but a 0.16 plugin no longer loads on
+0.7.6. PF4J moves to **3.16.0** with the SDK (0.16.2), the version core loads plugins with.
+
+### Security
+
+- **A saved page can no longer restyle the site.** Page bodies were sanitised with
+  `DOMPurify.sanitize(html, { ADD_ATTR: ['target', 'rel'] })` — DOMPurify's defaults, which allow `<style>` and
+  `style=`. Under the plugin contract's `style-src 'unsafe-inline'`, a page containing
+  `<style>:host{position:fixed;inset:0;background:red;z-index:99999}</style>` covered the whole site for every
+  reader, anonymous included, and made the Save button unclickable even for its author; the same primitive
+  reaches CSS exfiltration of form values (audit SEC-C07). Everything an author writes now goes through
+  **`ctx.sanitize`**, the host's own feed-HTML policy. The wiki's own tokens (links, episode citations, sized
+  images) need attributes that policy rightly refuses an author, so they are swapped for placeholder words
+  before parsing and put back — into text nodes only — after sanitising; an author can no longer set `class`,
+  `data-*` or `style` by hand. The direct `dompurify` dependency is gone. A sized image is the one element
+  built from an author-typed URL, so its `src` is held to the rule the host applies to an `<img src>`: the
+  policy's allowlist plus its one stated exception, a `data:` image.
+
+### Fixed
+
+- **An episode card's note shows the show notes as text**, not the feed's HTML printed as literal tags: it
+  reads `descriptionText` (SDK 0.16.0) instead of `description`.
+- **A task list keeps its ticks.** The host policy drops `<input>`, which took `- [x]` and `- [ ]` down to the
+  same bullet; the boxes are now ☑/☐ glyphs.
+- **A numbered list resumed after an image or a code block keeps its number, and a table keeps its column
+  alignment** (SDK 0.16.1 allows `start` and `align`, mosaicast-plugin-sdk#81).
+- **External links carry the host's `rel`** (`noopener noreferrer nofollow ugc`). The wiki rewrote it after
+  sanitising, dropping `nofollow ugc` and sending a same-origin absolute link to a new tab.
+
+### Changed
+
+- **The episode picker offers every episode.** Nothing changed here: core 0.7.6 stopped cutting `ctx.episodes`
+  off at 200, which a long-running show's citation picker had silently hit.
+- **Doc reads and writes go through `ctx.docs`**, not hand-built `data/site/main/…` paths on `ctx.api`. Four
+  components read `index`, and the host's client now answers concurrent reads of one key with one request;
+  the media library and the dashboard use `ctx.docs.list`. The one exception is the editor's receipt poll,
+  which stays on `ctx.api` on purpose: the docs client remembers a miss for 30 s, and "no receipt yet" is
+  exactly the answer that poll re-asks until it changes.
+- **Links and focus rings use `--mc-accent-text`**, the accent clamped to WCAG AA; a pale admin seed measured
+  1.12:1 as link text.
+- **Numeric settings declare their bounds** — `ingestIntervalSeconds` 1–86400, `revisionsKept` 1–10000,
+  `blobGraceMinutes` 0–10080, whole numbers — so core refuses a value outside them on save instead of storing
+  it. The backend's own floors stay.
+
+## [0.4.0] — 2026-09-17
 
 `platformApi` moves to **0.15.0** (core 0.7.2 or newer) — mandatory, since the host matches on an exact
 `major.minor` and rejects an older manifest at load rather than warning about it. The release exists to fix

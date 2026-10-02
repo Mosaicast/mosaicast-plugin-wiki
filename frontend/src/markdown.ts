@@ -1,18 +1,39 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // SPDX-FileCopyrightText: 2026 The Mosaicast Authors
 
-import DOMPurify from 'dompurify';
-import { marked } from 'marked';
+import { FEED_HTML_POLICY } from '@mosaicast/plugin-sdk';
+import { Marked } from 'marked';
+
+/**
+ * The parser, with one renderer changed: a task-list box becomes a glyph. The host policy drops `<input>`
+ * (it is how a form gets into a page), so marked's disabled checkbox vanished and `- [x] done` read the same
+ * as `- [ ] todo`. A glyph is text, so there is nothing for the policy to refuse and nothing to restore.
+ */
+const parser = new Marked({
+  renderer: {
+    checkbox: ({ checked }) => (checked ? '\u2611 ' : '\u2610 '),
+  },
+});
 
 /**
  * Renders a page body to HTML that is safe to insert.
  *
  * **Never trust a page body verbatim.** It is written by a podcaster, but it is still author input that
- * ends up as markup on a public page, and markdown permits raw HTML by design. Everything here goes
- * through DOMPurify after parsing, exactly like the reference plugin does for its own markdown.
+ * ends up as markup on a public page, and markdown permits raw HTML by design. Everything the author wrote
+ * goes through **`ctx.sanitize`** (SDK 0.16.0) after parsing — the host's own feed-HTML policy.
  *
- * On top of markdown, the wiki understands four tokens of its own. They are expanded to anchors *before*
- * parsing, so the sanitiser still sees them and nothing here is a hole in it:
+ * Until 0.5.0 this ran `DOMPurify.sanitize(html, { ADD_ATTR: ['target', 'rel'] })`, i.e. DOMPurify's
+ * defaults, which allow `<style>` and `style=`. Under the contract's `style-src 'unsafe-inline'` a saved page
+ * containing `<style>:host{position:fixed;inset:0;…}</style>` covered the whole site for every reader,
+ * anonymous included, and the Save button became unclickable even for its author (audit SEC-C07).
+ *
+ * On top of markdown, the wiki understands four tokens of its own. The markup they expand to needs things
+ * the host policy rightly refuses an *author* — `class`, `data-wiki`/`data-ep`/`data-t`, an image width — so
+ * they are not run through it. Each token is replaced by an inert placeholder word before parsing, the
+ * author's HTML is sanitised with the placeholders in it, and only then is each placeholder swapped for the
+ * element this module built, **in text nodes only**. Every attribute value in those elements is escaped
+ * here, so the author controls text and a slug, never markup; a placeholder that ended up inside an
+ * attribute stays a harmless word.
  *
  * ```
  * [[the-kraken]]                     a wiki link, label = the slug
@@ -23,6 +44,37 @@ import { marked } from 'marked';
  * ![caption](blob:<ref>){width=320}  …at a width the author chose, optionally {align=left|center|right}
  * ```
  */
+
+/**
+ * Swaps each placeholder word in a text node for the element it stands for.
+ *
+ * Text nodes only, deliberately: a placeholder the parser put inside an attribute (a token written in an
+ * image's alt text, say) is left as the word it is, because splicing markup into an attribute value is how
+ * a value becomes an attribute.
+ */
+function restoreTokens(root: HTMLElement, placeholder: RegExp, built: string[]): void {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  const texts: Text[] = [];
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    placeholder.lastIndex = 0;
+    if (placeholder.test((node as Text).data)) {
+      texts.push(node as Text);
+    }
+  }
+  for (const text of texts) {
+    const fragment = document.createDocumentFragment();
+    let last = 0;
+    for (const match of text.data.matchAll(placeholder)) {
+      fragment.append(text.data.slice(last, match.index));
+      const template = document.createElement('template');
+      template.innerHTML = built[Number(match[1])] ?? '';
+      fragment.append(template.content);
+      last = match.index! + match[0].length;
+    }
+    fragment.append(text.data.slice(last));
+    text.replaceWith(fragment);
+  }
+}
 
 /** One heading, for the table of contents. */
 export interface TocEntry {
@@ -39,6 +91,8 @@ export interface RenderOptions {
   episodeHref(slug: string, seconds?: number): string;
   /** Resolves an uploaded file's ref to a URL. Absent when the plugin has no file storage. */
   blobUrl?: (ref: string) => string;
+  /** `ctx.sanitize` — the host's HTML policy, applied to everything the author wrote (SDK 0.16.0). */
+  sanitize: (html: string) => string;
 }
 
 /** The rendered body plus the headings found in it. */
@@ -229,8 +283,12 @@ export function formatTimestamp(seconds: number): string {
   return `${h > 0 ? `${h}:` : ''}${mm}:${String(sec).padStart(2, '0')}`;
 }
 
-/** Expands the wiki's own tokens into anchors the parser and the sanitiser both understand. */
-function expandTokens(markdown: string, options: RenderOptions): string {
+/**
+ * Replaces the wiki's own tokens with placeholder words, handing the markup each one stands for to `keep`.
+ *
+ * @param keep records one element this module built and returns the word that stands for it
+ */
+function expandTokens(markdown: string, options: RenderOptions, keep: (html: string) => string): string {
   // Sized images first, and as raw HTML: markdown has no syntax for a width, so this is the one construct
   // that cannot survive as markdown and be styled afterwards. An image whose target this plugin cannot
   // resolve is dropped exactly as an unsized one is -- a caption without a picture beats a broken icon.
@@ -238,7 +296,11 @@ function expandTokens(markdown: string, options: RenderOptions): string {
     const src = target.startsWith('blob:')
       ? (options.blobUrl ? options.blobUrl(target.slice('blob:'.length)) : null)
       : target;
-    if (!src) {
+    // This element skips the sanitiser -- it needs `style` and `class` -- so its one author-typed URL is held
+    // to the rule the host would have applied to an `<img src>`: the allowlist, plus the policy's one stated
+    // exception, a `data:` image (SDK 0.16.1). No `javascript:`, no `vbscript:`.
+    const uri = src?.trim().replace(/[\u0000-\u0020]/g, '') ?? '';
+    if (!src || !(FEED_HTML_POLICY.allowedUriRegexp.test(uri) || uri.startsWith('data:'))) {
       return escapeHtml(alt);
     }
     const { width, align } = parseImageAttrs(attrs);
@@ -247,7 +309,7 @@ function expandTokens(markdown: string, options: RenderOptions): string {
     // two of them stack; a raw <img> is an HTML *block* to marked and gets no paragraph, so without this
     // two sized images end up side by side and an author who wrote them on separate lines is surprised.
     const cls = ` class="wiki__img${align ? ` wiki__img--${align}` : ''}"`;
-    return `<img src="${escapeHtml(src)}" alt="${escapeHtml(alt)}"${style}${cls}>`;
+    return keep(`<img src="${escapeHtml(src)}" alt="${escapeHtml(alt)}"${style}${cls}>`);
   });
 
   const withImages = withSized.replace(BLOB_IMAGE, (whole, alt: string, ref: string) =>
@@ -276,13 +338,17 @@ function expandTokens(markdown: string, options: RenderOptions): string {
       const text = label || (stamp != null ? `${target} ${formatTimestamp(stamp)}` : target);
       const href = options.episodeHref(target, stamp);
       const time = stamp != null ? ` data-t="${stamp}"` : '';
-      return `<a class="wiki-ep" href="${escapeHtml(href)}" data-ep="${escapeHtml(target)}"${time}>${escapeHtml(text)}</a>`;
+      return keep(
+        `<a class="wiki-ep" href="${escapeHtml(href)}" data-ep="${escapeHtml(target)}"${time}>${escapeHtml(text)}</a>`,
+      );
     }
 
     const missing = !options.hasPage(target);
     const cls = missing ? 'wiki-link wiki-link--missing' : 'wiki-link';
     const title = missing ? ' title="This page does not exist yet"' : '';
-    return `<a class="${cls}" href="/p/wiki/${encodeURIComponent(target)}" data-wiki="${escapeHtml(target)}"${title}>${escapeHtml(label || target)}</a>`;
+    return keep(
+      `<a class="${cls}" href="/p/wiki/${encodeURIComponent(target)}" data-wiki="${escapeHtml(target)}"${title}>${escapeHtml(label || target)}</a>`,
+    );
   });
 }
 
@@ -346,13 +412,20 @@ function headingId(text: string, taken: Set<string>): string {
  * @returns sanitised HTML, and the `h2`/`h3` headings with the ids given to them
  */
 export function renderPage(markdown: string, options: RenderOptions): RenderedPage {
-  const parsed = marked.parse(expandTokens(markdown ?? '', options), { async: false }) as string;
-  const clean = DOMPurify.sanitize(parsed, { ADD_ATTR: ['target', 'rel'] });
+  // Letters and digits only, so neither marked nor the sanitiser has anything to reinterpret; the nonce makes
+  // it a word an author cannot type in advance.
+  const nonce = Math.random().toString(36).slice(2, 10);
+  const built: string[] = [];
+  const keep = (html: string) => `wikitoken${nonce}n${built.push(html) - 1}x`;
+
+  const parsed = parser.parse(expandTokens(markdown ?? '', options, keep), { async: false }) as string;
+  const clean = options.sanitize(parsed);
 
   // Ids are assigned after sanitising, on a detached element: an id that came from the body could
   // collide with the host's own, and this way the anchor the TOC points at is one we minted.
   const host = document.createElement('div');
   host.innerHTML = clean;
+  restoreTokens(host, new RegExp(`wikitoken${nonce}n(\\d+)x`, 'g'), built);
 
   const taken = new Set<string>();
   const toc: TocEntry[] = [];
@@ -363,11 +436,8 @@ export function renderPage(markdown: string, options: RenderOptions): RenderedPa
     toc.push({ id, text, level: heading.tagName === 'H2' ? 2 : 3 });
   });
 
-  // An external link opens in a new tab and must not hand the opener over with it.
-  host.querySelectorAll('a[href^="http"]').forEach((anchor) => {
-    anchor.setAttribute('target', '_blank');
-    anchor.setAttribute('rel', 'noopener noreferrer');
-  });
+  // No `target`/`rel` pass here: `ctx.sanitize` already sends a link leaving the site to a new tab with the
+  // host's `rel`, and leaves a same-origin one alone. Rewriting it afterwards dropped `nofollow ugc`.
 
   const firstParagraph = host.querySelector('p')?.textContent?.trim() ?? '';
   return { html: host.innerHTML, toc, plainFirstParagraph: firstParagraph };

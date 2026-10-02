@@ -44,6 +44,7 @@ export function HomeView({ ctx, i18n, index, mayEdit, go }: HomeViewProps) {
       hasPage: (target) => Object.prototype.hasOwnProperty.call(index, target),
       episodeHref: (episode, seconds) => ctx.links.episode(episode, seconds == null ? undefined : { t: seconds }),
       blobUrl: ctx.blobs ? (ref) => ctx.blobs!.urlFor(ref) : undefined,
+      sanitize: ctx.sanitize,
     });
   }, [ctx, home.data?.markdown, index]);
 

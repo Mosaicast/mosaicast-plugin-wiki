@@ -6,7 +6,7 @@ plugins {
 }
 
 group = "dev.mosaicast.plugin"
-version = "0.4.0"
+version = "0.5.0"
 
 java {
     toolchain {
@@ -31,13 +31,13 @@ repositories {
 }
 
 dependencies {
-    compileOnly("dev.mosaicast:plugin-api:0.15.0")
-    compileOnly("org.pf4j:pf4j:3.15.1")
-    annotationProcessor("org.pf4j:pf4j:3.15.1") // generates the PF4J extension index for @Extension
+    compileOnly("dev.mosaicast:plugin-api:0.17.0")
+    compileOnly("org.pf4j:pf4j:3.16.0")
+    annotationProcessor("org.pf4j:pf4j:3.16.0") // generates the PF4J extension index for @Extension
 
     testImplementation(platform("org.junit:junit-bom:6.1.3"))
     testImplementation("org.junit.jupiter:junit-jupiter")
-    testImplementation("dev.mosaicast:plugin-testkit:0.15.0")
+    testImplementation("dev.mosaicast:plugin-testkit:0.17.0")
     // Test-only: WikiSchemaFixture builds the FakeSchemaStore by reading plugin.json, so a schema field
     // added to the manifest cannot be forgotten in four hand-transcribed test fixtures.
     testImplementation("tools.jackson.core:jackson-databind:3.2.1")

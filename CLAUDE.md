@@ -12,10 +12,10 @@ Read the first two fully before writing code. Work in plan mode first.
 ### `docs/BRIEF.md` is stale — known corrections
 It predates SDK 0.4.0 and is a read-only spec, so the corrections live here. Where it disagrees with the SDK
 working tree or `mosaicast-plugin-sample`, the latter win.
-- `platformApi` is **`0.15.0`** (exact `major.minor` match; the docs' `"1.x"` does not even parse). Same
-  string in all four places — `plugin.json`, both gradle coordinates, `package.json` — and **none of them is
-  a literal in a test**: `manifest.test.ts` compares against the SDK's own `PLATFORM_API_VERSION`, `ci.yml`
-  compares the manifest against both gradle coordinates.
+- `platformApi` is **`0.17.0`** (core 0.7.6+; exact `major.minor` match; the docs' `"1.x"` does not even
+  parse). Same string in all four places — `plugin.json`, both gradle coordinates, `package.json` — and **none
+  of them is a literal in a test**: `manifest.test.ts` compares against the SDK's own `PLATFORM_API_VERSION`,
+  `ci.yml` compares the manifest against both gradle coordinates.
 - Its `site / main` slot **renders nowhere** (`main` is the episode page body), and so does
   `placement: "admin"` — both validate. Hence `page` + `site`, and tooling at `/p/wiki/_admin`.
 
@@ -40,6 +40,11 @@ what is particular to this repo:
   host cannot police inside our tables. Resolve at render. An unknown or erased id is **absent from the
   answer**, not null in it — key a `Map` on the id. With no `identity`, attribute *nothing*: calling every
   live author "a former contributor" is a lie.
+- **Author HTML goes through `ctx.sanitize`, the wiki's own markup does not** (0.5.0, SDK 0.16.0).
+  `markdown.ts` swaps each token for a nonce placeholder, sanitises, then restores the elements it built —
+  into text nodes only. Never pass author HTML through that restore path, hold any author URL in a built
+  element to `FEED_HTML_POLICY.allowedUriRegexp`, and leave `target`/`rel` to the host. Never go back to a
+  DOMPurify config: its defaults let `<style>` deface the site (SEC-C07).
 - **The ingest period goes through a `Supplier`, never a captured `Duration`** — the latter is read once in
   `register()` and held for the process, and it is the number deciding how long a save stays *queued*. The
   supplier runs on a scheduler thread: one config read, nothing blocking. `scheduledPeriods()` pins it.
@@ -71,35 +76,34 @@ scripts/set-version.sh <x.y.z>                  # the plugin's own version, all 
 
 ## Live testing (do this every phase)
 ```
-./build.sh && rm -rf ../mosaicast-core/plugins/wiki && cp -r dist ../mosaicast-core/plugins/wiki
-cd ../mosaicast-core && dev/instance.sh up --plugins --admin  # :8081, fleeting PG :5433, sample feed
-#   dev-login: POST /api/auth/dev-login?role=podcaster|fan|admin (prime /api/meta, send X-XSRF-TOKEN)
-dev/instance.sh status | logs [-f] | psql | down
+./build.sh && cd ../mosaicast-core
+dev/instance.sh --name wiki up --plugin-dir ../mosaicast-plugin-wiki/dist   # fleeting PG, sample feed
+source <(dev/instance.sh --name wiki env)    # MC_APP_URL, MC_APP_PORT, … — ports are allocated
+#   dev-login: POST $MC_APP_URL/api/auth/dev-login?role=podcaster|fan|admin (prime /api/meta, send X-XSRF-TOKEN)
+dev/instance.sh --name wiki status | logs [-f] | psql | down        # dev/instance.sh ls: everyone's
 ```
-`instance.sh` replaced `screenshots.sh` and needs `--plugins`. Disposable, seeded only with the sample
-feed. Core loads plugins **at startup only**: a rebuilt backend needs a restart, a rebuilt bundle does not.
-Capture light and dark at 375×667, 768×1024, 1280×800 into `assets/screenshots/` for the PR.
+**Always `--name wiki`, and only ever `up`/`down` that name** — core, SDK, sample, bingo and stats sessions
+run their own instances beside it. A named instance runs `origin/master`'s core as a cached jar (`--core REF`
+pins another) and copies `dist/` in at `up`; **`--name wiki restart`** copies it again and reboots the app
+with the database, feed, ports and episode ids kept (`--core origin/master` moves core too). Needing a second
+plugin: pass another `--plugin-dir` with a sister repo's existing `dist/`, or build a copy of it in the
+scratchpad — never in its tree. Browse on **`127.0.0.1:<port>`**: cookies are per host, not port, so
+`localhost` logs the sister instances out. Capture light and dark at 375×667, 768×1024, 1280×800 into
+`assets/screenshots/` for a PR that changes what renders.
 
-**Six ways this loop lies to you, all seen in practice:**
-1. **`up` accepts a stale instance.** Its health check answers from an app already running, so a rebuilt
-   plugin never loads and you test the previous build. After `down`, wait until
-   `curl -sf localhost:8081/actuator/health` *fails* before `up`.
-2. **Never wrap `up` in `timeout`, and don't background it.** The app is a grandchild of the call; when that
-   process group is reaped the JVM dies mid-test. Symptom: `curl` returns `000`, and a fresh fleeting
-   Postgres makes every schema table look empty — which reads exactly like a bug in your own code.
-3. **Check what you shipped.** A build in a call that then times out leaves a *stale* bundle installed, and
-   the symptom is a feature behaving as if never written. `grep -c <a-new-class> dist/assets/wiki.es.js`.
-4. **Don't run `./build.sh` while the stack is up** — a second Gradle invocation can take the bootRun daemon
-   with it. Build, install, then boot.
-5. **An env var you export does not reach the app.** `bootRun`'s JVM forks from the long-lived Gradle daemon
-   and inherits *its* environment. Pass `--args="… --some.property=value"`, or `./gradlew --stop` first.
-6. **The ingest tick is 30s.** Poll in one command that waits for the result; a `curl` typed between two
+**Three ways this loop lies to you, all seen in practice:**
+1. **Check what you shipped.** A build in a call that then times out leaves a *stale* `dist/`, and the
+   symptom is a feature behaving as if never written. `grep -c <a-new-class> dist/assets/wiki.es.js`.
+2. **Never wrap `up` in `timeout`, and don't background it.** Symptom: `curl` returns `000`, and a fresh
+   fleeting Postgres makes every schema table look empty — which reads exactly like a bug in your own code.
+3. **The ingest tick is 30s.** Poll in one command that waits for the result; a `curl` typed between two
    others races the tick and reads the state from before your write.
 
 Translation needs three things true at once: LibreTranslate on `:5000`, core booted with
-`--mosaicast.external.allowed-private-origins=http://localhost:5000` (exact origins, not a subnet; the env
-spelling is subject to trap 5), and the provider selected — `PUT /api/admin/external/translation/providers/
-libretranslate/settings {"baseUrl":…}`, then `…/translation/provider`, then `POST …/translation/test`.
+`--app-arg --mosaicast.external.allowed-private-origins=http://localhost:5000` on `up` (exact origins, not
+a subnet; `restart` replays it, a later `up` does not), and the provider selected —
+`PUT /api/admin/external/translation/providers/libretranslate/settings {"baseUrl":…}`, then
+`…/translation/provider`, then `POST …/translation/test`.
 German is a content language on a fresh install (**Admin → Languages** changes that); with only one, the
 whole language UI is correctly invisible.
 

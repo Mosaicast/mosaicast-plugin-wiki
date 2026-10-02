@@ -2,6 +2,8 @@
 // SPDX-FileCopyrightText: 2026 The Mosaicast Authors
 
 import { describe, expect, it } from 'vitest';
+import { FEED_HTML_POLICY } from '@mosaicast/plugin-sdk';
+import { sanitizeLikeHost } from '@mosaicast/plugin-sdk/testing';
 import {
   formatImage,
   formatTimestamp,
@@ -16,13 +18,82 @@ import {
 const options = (over: Partial<RenderOptions> = {}): RenderOptions => ({
   hasPage: (slug) => slug === 'the-kraken',
   episodeHref: (slug, seconds) => (seconds == null ? `/episodes/${slug}` : `/episodes/${slug}?t=${seconds}`),
+  // What `ctx.sanitize` does in the host, reimplemented by the SDK test kit (SDK 0.16.0).
+  sanitize: sanitizeLikeHost,
   ...over,
+});
+
+describe('renderPage — the host policy, and the wiki\'s own markup (SDK 0.16.0)', () => {
+  const host = (html: string) => {
+    const div = document.createElement('div');
+    div.innerHTML = html;
+    return div;
+  };
+
+  it('drops a stylesheet an author wrote — the page defacement DOMPurify defaults let through (SEC-C07)', () => {
+    const { html } = renderPage(
+      'Fine <style>:host{position:fixed;inset:0;z-index:99999}</style>\n\n<p style="position:fixed">x</p>',
+      options(),
+    );
+    const page = host(html);
+    expect(page.querySelector('style')).toBeNull();
+    expect(page.querySelector('[style]')).toBeNull();
+    expect(page.textContent).toContain('Fine');
+  });
+
+  it('keeps the attributes the wiki\'s own tokens need, and gives an author none of them', () => {
+    const { html } = renderPage(
+      '[[the-kraken]] and [[episode:s01e02@1:30]] and ![map](/m.png){width=50% align=left} and ' +
+        '<a class="wiki-link" data-wiki="evil" href="/x">forged</a>',
+      options(),
+    );
+    const page = host(html);
+    const link = page.querySelector('a[data-wiki="the-kraken"]');
+    expect(link?.className).toBe('wiki-link');
+    expect(page.querySelector('a.wiki-ep')?.getAttribute('data-t')).toBe('90');
+    const image = page.querySelector('img.wiki__img--left') as HTMLImageElement | null;
+    expect(image?.style.width).toBe('50%');
+    // The same attributes, typed by the author, are the host's to refuse.
+    const forged = [...page.querySelectorAll('a')].find((a) => a.textContent === 'forged');
+    expect(forged?.hasAttribute('class')).toBe(false);
+    expect(forged?.hasAttribute('data-wiki')).toBe(false);
+  });
+
+  it('holds a sized image to the host\'s URL rule, since it skips the sanitiser', () => {
+    const { html } = renderPage('![pixel](vbscript:x){width=10}', options());
+    const page = host(html);
+    expect(page.querySelector('img')).toBeNull();
+    expect(page.textContent).toContain('pixel');
+    // The policy's one stated exception (SDK 0.16.1): a `data:` image is kept, sized or not.
+    const inline = host(renderPage('![dot](data:image/png;base64,AAAA){width=10}', options()).html);
+    expect(inline.querySelector('img')?.getAttribute('src')).toBe('data:image/png;base64,AAAA');
+  });
+
+  it('keeps a resumed list\'s number and a table\'s alignment (SDK 0.16.1)', () => {
+    const page = host(renderPage('3. three\n4. four\n\n| a | b |\n|:-:|--:|\n| 1 | 2 |', options()).html);
+    expect(page.querySelector('ol')?.getAttribute('start')).toBe('3');
+    expect(page.querySelector('th')?.getAttribute('align')).toBe('center');
+  });
+
+  it('keeps a task list\'s state, which the policy would drop with its <input>', () => {
+    const { html } = renderPage('- [ ] todo\n- [x] done', options());
+    const items = [...host(html).querySelectorAll('li')].map((li) => li.textContent?.trim());
+    expect(items).toEqual(['☐ todo', '☑ done']);
+  });
+
+  it('never splices a token into an attribute, where markup would become attributes', () => {
+    const { html } = renderPage('![look [[the-kraken]]](/m.png)', options());
+    const image = host(html).querySelector('img');
+    expect(image).not.toBeNull();
+    expect(image!.getAttributeNames().sort()).toEqual(['alt', 'src']);
+    expect(image!.getAttribute('alt')).not.toContain('<');
+  });
 });
 
 describe('renderPage — sanitising', () => {
   it('strips a script tag out of author markdown', () => {
     // Markdown permits raw HTML by design, and a page body is author input that ends up as markup on a
-    // public page. This is the whole reason the output goes through DOMPurify.
+    // public page. This is the whole reason the output goes through `ctx.sanitize`.
     const { html } = renderPage('Hello <script>alert(1)</script> there', options());
 
     expect(html).not.toContain('<script');
@@ -124,10 +195,11 @@ describe('renderPage — headings and external links', () => {
     expect(toc.map((entry) => entry.id)).toEqual(['notes', 'notes-2']);
   });
 
-  it('never hands the opener to an external tab', () => {
+  it('never hands the opener to an external tab, and keeps the host\'s rel', () => {
     const { html } = renderPage('[out](https://example.com)', options());
 
-    expect(html).toContain('rel="noopener noreferrer"');
+    // The host's own string, not one the wiki rewrites it to -- that dropped `nofollow ugc`.
+    expect(html).toContain(`rel="${FEED_HTML_POLICY.externalLinkRel}"`);
     expect(html).toContain('target="_blank"');
   });
 
@@ -220,6 +292,7 @@ describe('image attributes', () => {
     hasPage: () => true,
     episodeHref: (slug) => `/episodes/${slug}`,
     blobUrl: (ref) => `/api/plugins/wiki/blob/${ref}`,
+    sanitize: sanitizeLikeHost,
   };
 
   it('reads a width in pixels or percent, and an alignment', () => {

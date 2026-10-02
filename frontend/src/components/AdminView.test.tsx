@@ -4,7 +4,7 @@
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { makeMockBlobs, makeMockCtx, makeMockSchema } from '@mosaicast/plugin-sdk/testing';
+import { makeMockBlobs, makeMockCtx, makeMockDocs, makeMockSchema } from '@mosaicast/plugin-sdk/testing';
 import { WikiPage } from './WikiPage';
 import { flush, mockUser } from '../test-utils';
 
@@ -28,14 +28,12 @@ function ctxFor(overrides: Parameters<typeof makeMockCtx>[0] = {}) {
   return makeMockCtx({
     route: { path: '_admin' },
     user: mockUser('u1', 'podcaster', 'Ada'),
-    apiResponses: {
+    docs: makeMockDocs({
       'data/site/main/index': INDEX,
       'data/site/main/wikistats': { pages: 2, orphans: 1, brokenLinks: 1, pendingDrafts: 1 },
-      'data/site/main?prefix=draft:&size=100': { items: [{ key: 'draft:the-kraken', value: {} }] },
-      'data/site/main?prefix=ingest:&size=200': {
-        items: [{ key: 'ingest:the-kraken', value: { state: 'conflict', detail: 'edited from revision 1, now at 2' } }],
-      },
-    },
+      'data/site/main/draft:the-kraken': {},
+      'data/site/main/ingest:the-kraken': { state: 'conflict', detail: 'edited from revision 1, now at 2' },
+    }),
     schema: makeMockSchema({ page: [], link: LINKS, media: MEDIA, source: [], revision: [] }),
     blobs: makeMockBlobs(),
     ...overrides,
