@@ -12,7 +12,7 @@ Read the first two fully before writing code. Work in plan mode first.
 ### `docs/BRIEF.md` is stale — known corrections
 It predates SDK 0.4.0 and is a read-only spec, so the corrections live here. Where it disagrees with the SDK
 working tree or `mosaicast-plugin-sample`, the latter win.
-- `platformApi` is **`0.17.0`** (core 0.7.6+; exact `major.minor` match; the docs' `"1.x"` does not even
+- `platformApi` is **`0.18.0`** (core 0.7.7+; exact `major.minor` match; the docs' `"1.x"` does not even
   parse). Same string in all four places — `plugin.json`, both gradle coordinates, `package.json` — and **none
   of them is a literal in a test**: `manifest.test.ts` compares against the SDK's own `PLATFORM_API_VERSION`,
   `ci.yml` compares the manifest against both gradle coordinates.

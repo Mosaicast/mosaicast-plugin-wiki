@@ -309,6 +309,11 @@ export const WIKI_CSS = ICON_CSS + `
     flex: none; color: var(--mc-text-muted);
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .75rem;
   }
+  .wiki__pickerlist .wiki__phase {
+    flex: none; padding: .05rem .45rem; border: 1px solid var(--mc-border); border-radius: 999px;
+    color: var(--mc-text-muted); font-size: .6875rem; white-space: nowrap;
+  }
+  .wiki__phase--planned { border-color: var(--mc-accent-2); color: var(--mc-text); }
   .wiki__thumb { flex: none; width: 2.5rem; height: 2.5rem; object-fit: cover; border-radius: .25rem; }
   .wiki__upload .wiki__btn { cursor: pointer; }
   .wiki__actions { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: 1.25rem; }

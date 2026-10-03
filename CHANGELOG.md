@@ -18,10 +18,23 @@ warned about, and every entry that moves it says so.
 
 ## [0.5.0] — unreleased
 
-`platformApi` moves to **0.17.0** (core **0.7.6** or newer) — mandatory, the host matches on an exact
-`major.minor`, so core 0.7.5 and older refuse this build. The 0.16 minor came out of three test passes, and one
-of their findings was this plugin's; 0.17 adds nothing the wiki calls, but a 0.16 plugin no longer loads on
-0.7.6. PF4J moves to **3.16.0** with the SDK (0.16.2), the version core loads plugins with.
+`platformApi` moves to **0.18.0** (core **0.7.7** or newer) — mandatory, the host matches on an exact
+`major.minor`, so core 0.7.6 and older refuse this build. The 0.16 minor came out of three test passes, and one
+of their findings was this plugin's; 0.17 and 0.18 brought season placement and planned episodes, of which
+the editor uses the second. PF4J moves to **3.16.0** with the SDK (0.16.2), the version core loads plugins
+with.
+
+### Added
+
+- **The editor knows a planned episode from a released one** (SDK 0.18.0). Core 0.7.7 lets a podcaster plan
+  an episode quietly — visible to podcasters and admins, absent for everyone else — and announce it later.
+  The citation picker badges an episode *Not announced* or *Upcoming*, and the body gets a warning when it
+  cites one that is still quiet: readers cannot open it, but its address and the link text are in a page
+  anyone can read. A warning, not a refusal — citing early is the author's call. The reader is unchanged on
+  purpose: it cannot tell a plan from a missing episode, and must not be able to.
+  Phases are read through `ctx.feeds.displayMany`, which **clamps** at 200 slugs rather than splitting, so
+  the lookup slices (SDK #97). Core 0.7.7 leaves a plan out of a podcaster's `ctx.episodes` (core#258), so
+  today the picker cannot offer one and the warning is what catches a hand-typed citation.
 
 ### Security
 
