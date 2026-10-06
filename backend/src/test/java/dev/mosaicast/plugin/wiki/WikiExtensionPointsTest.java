@@ -6,12 +6,15 @@ package dev.mosaicast.plugin.wiki;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import dev.mosaicast.plugin.api.Criteria;
 import dev.mosaicast.plugin.api.Criteria.Op;
+import dev.mosaicast.plugin.api.ExportFile;
 import dev.mosaicast.plugin.api.Role;
 import dev.mosaicast.plugin.api.Scope;
+import dev.mosaicast.plugin.api.UserExport;
 import dev.mosaicast.plugin.testkit.FakeFeedAccess;
 import dev.mosaicast.plugin.testkit.FakePluginContext;
 import dev.mosaicast.plugin.testkit.FakeSchemaStore;
@@ -21,9 +24,12 @@ import dev.mosaicast.plugin.testkit.MapPluginConfig;
 import dev.mosaicast.plugin.testkit.PageRouteProviderHarness;
 import dev.mosaicast.plugin.testkit.SearchProviderHarness;
 import dev.mosaicast.plugin.testkit.UserDataHandlerHarness;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
 
 /** The three extension points SDK 0.9 added, and the shared tag vocabulary that came with it. */
 class WikiExtensionPointsTest {
@@ -184,6 +190,126 @@ class WikiExtensionPointsTest {
         plugin.eraseUser("u-alice");
 
         assertEquals(1, schema.count("revision", Criteria.where("author", Op.EQ, "u-bob")));
+    }
+
+    @Test
+    void eraseScrubsAQueuedDraftSoTheNextPassCannotRelinkIt() {
+        // A queued draft names its author, and ingesting it after the erasure would write the deleted
+        // person's id into a fresh revision -- the link eraseUser exists to cut.
+        var schema = schema();
+        var ctx = ctx(schema);
+        var plugin = seeded(ctx);
+        ctx.store().put(Scope.site(), WikiPlugin.DRAFT_PREFIX + "deep-sea", Map.of(
+                "title", "Deep sea", "markdown", "Dark.", "author", "u-alice"));
+        ctx.store().put(Scope.site(), WikiPlugin.ASSET_PREFIX + "abc-123", Map.of(
+                "name", "kraken.png", "mime", "image/png", "addedBy", "u-alice"));
+        ctx.store().put(Scope.site(), WikiPlugin.DELETE_PREFIX + "no-such-page", Map.of("requestedBy", "u-alice"));
+
+        plugin.eraseUser("u-alice");
+
+        assertNull(ctx.store().get(Scope.site(), WikiPlugin.ASSET_PREFIX + "abc-123", Map.class).orElseThrow()
+                .get("addedBy"), "the library entry stays, unattributed");
+        assertEquals("kraken.png", ctx.store().get(Scope.site(), WikiPlugin.ASSET_PREFIX + "abc-123", Map.class)
+                .orElseThrow().get("name"));
+        assertNull(ctx.store().get(Scope.site(), WikiPlugin.DELETE_PREFIX + "no-such-page", Map.class)
+                .orElseThrow().get("requestedBy"));
+
+        plugin.tick();
+
+        assertEquals(0, schema.count("revision", Criteria.where("author", Op.EQ, "u-alice")));
+        assertEquals(1, schema.count("revision", Criteria.where("pageSlug", Op.EQ, "deep-sea")),
+                "the queued save still lands -- only the name on it went");
+    }
+
+    // --- the data export ---------------------------------------------------------------------------
+
+    private static final JsonMapper JSON = JsonMapper.builder().build();
+
+    private static JsonNode file(UserExport export, String path) {
+        ExportFile file = export.files().stream().filter(f -> f.path().equals(path)).findFirst().orElseThrow(
+                () -> new AssertionError("no " + path + " in " + export.files()));
+        assertEquals("application/json", file.mediaType());
+        return JSON.readTree(file.bytes());
+    }
+
+    @Test
+    void exportsTheRevisionsAPersonWroteWithTheirText() {
+        // A revision's author is a site-scoped UUID, and still this person: "which edits did I make" is theirs
+        // to ask (Art. 15), and the text they wrote is theirs to take elsewhere (Art. 20).
+        var ctx = ctx(schema());
+        var plugin = seeded(ctx);
+        ctx.store().put(Scope.site(), WikiPlugin.DRAFT_PREFIX + "deep-sea", Map.of(
+                "title", "Deep sea", "markdown", "Bob's.", "author", "u-bob"));
+        plugin.tick();
+
+        UserExport export = new UserDataHandlerHarness(plugin).exportFiles("u-alice").orElseThrow();
+
+        JsonNode doc = file(export, "revisions.json");
+        assertEquals("mosaicast-wiki-revisions/1", doc.get("format").asString());
+        assertEquals(2, doc.get("revisions").size(), "both of hers, and not Bob's");
+        var bodies = new java.util.HashSet<String>();
+        doc.get("revisions").forEach(r -> bodies.add(r.get("markdown").asString()));
+        assertEquals(java.util.Set.of("A very large squid, seen off Norway.", "A secret draft about squid."), bodies);
+        assertEquals("[\"half-written\",\"the-kraken\"]", doc.get("lastEditorOf").toString());
+        assertEquals(1, export.files().size(), "nothing queued and nothing uploaded, so no empty files");
+    }
+
+    @Test
+    void exportsNothingForSomeoneWhoNeverEdited() {
+        var plugin = seeded(ctx(schema()));
+
+        assertTrue(new UserDataHandlerHarness(plugin).exportFiles("u-carol").isEmpty(),
+                "empty, so the host records 'no data' rather than an archive of empty lists");
+    }
+
+    @Test
+    void exportsQueuedSavesAndLibraryEntriesToo() {
+        var ctx = ctx(schema());
+        var plugin = seeded(ctx);
+        ctx.store().put(Scope.site(), WikiPlugin.DRAFT_PREFIX + "deep-sea", Map.of(
+                "title", "Deep sea", "markdown", "Dark.", "author", "u-alice"));
+        ctx.store().put(Scope.site(), WikiPlugin.DELETE_PREFIX + "the-kraken", Map.of("requestedBy", "u-alice"));
+        ctx.store().put(Scope.site(), WikiPlugin.ASSET_PREFIX + "abc-123", Map.of(
+                "name", "kraken.png", "mime", "image/png", "addedBy", "u-alice", "at", "2026-10-06T12:00:00Z"));
+        ctx.store().put(Scope.site(), WikiPlugin.ASSET_PREFIX + "def-456", Map.of(
+                "name", "theirs.png", "mime", "image/png", "addedBy", "u-bob"));
+
+        UserExport export = new UserDataHandlerHarness(plugin).exportFiles("u-alice").orElseThrow();
+
+        JsonNode queued = file(export, "queued.json");
+        assertEquals("deep-sea", queued.get("drafts").get(0).get("page").asString());
+        assertEquals("Dark.", queued.get("drafts").get(0).get("markdown").asString());
+        assertEquals("the-kraken", queued.get("deletions").get(0).asString());
+        JsonNode uploads = file(export, "uploads.json").get("uploads");
+        assertEquals(1, uploads.size());
+        assertEquals("abc-123", uploads.get(0).get("ref").asString());
+        assertEquals("kraken.png", uploads.get(0).get("name").asString());
+    }
+
+    @Test
+    void keepsTheNewestBodiesWhenTheTextOutgrowsTheBudget() {
+        // The host refuses a part over UserExport.MAX_BYTES outright, which would lose the whole export.
+        // Past the budget an older revision is still listed, without its body.
+        var schema = schema();
+        var ctx = ctx(schema);
+        var plugin = seeded(ctx);
+        String big = "x".repeat((int) (WikiPlugin.EXPORT_BODY_BUDGET * 3 / 5));
+        schema.insert("revision", Map.of("pageSlug", "huge", "revisionNo", 1, "title", "Huge", "markdown", big,
+                "comment", "", "author", "u-dave", "createdAt", Instant.parse("2026-01-01T00:00:00Z")));
+        schema.insert("revision", Map.of("pageSlug", "huge", "revisionNo", 2, "title", "Huge", "markdown", big,
+                "comment", "", "author", "u-dave", "createdAt", Instant.parse("2026-02-01T00:00:00Z")));
+
+        UserExport export = new UserDataHandlerHarness(plugin).exportFiles("u-dave").orElseThrow();
+
+        JsonNode doc = file(export, "revisions.json");
+        JsonNode newest = doc.get("revisions").get(0);
+        JsonNode older = doc.get("revisions").get(1);
+        assertEquals(2, newest.get("revisionNo").asInt());
+        assertEquals(big.length(), newest.get("markdown").asString().length());
+        assertFalse(older.has("markdown"));
+        assertTrue(older.get("markdownOmitted").asBoolean());
+        assertEquals(1, doc.get("markdownOmitted").asInt());
+        assertTrue(export.totalBytes() < UserExport.MAX_BYTES);
     }
 
     // --- the front page --------------------------------------------------------------------------

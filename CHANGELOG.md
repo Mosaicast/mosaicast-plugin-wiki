@@ -27,6 +27,13 @@ with.
 
 ### Added
 
+- **A person's data export includes what they wrote here** (core 0.8.0, SDK 0.19.0 `exportFiles`). A revision's
+  author is a site-scoped UUID, and still that person, so the wiki was listed as unsupported in their archive.
+  It now contributes `revisions.json` (every retained revision they authored, with its text, newest first, and
+  the pages they last edited), `uploads.json` (their media-library entries) and `queued.json` (a save or
+  deletion still waiting for the next pass), each left out when empty. The text is capped at a quarter of the
+  host's 32 MiB limit: past it, older revisions are still listed but without their bodies, and the file counts
+  how many. Revisions already pruned by `revisionsKept` are not included.
 - **The editor knows a planned episode from a released one** (SDK 0.18.0). Core 0.7.7 lets a podcaster plan
   an episode quietly — visible to podcasters and admins, absent for everyone else — and announce it later.
   The citation picker badges an episode *Not announced* or *Upcoming*, and the body gets a warning when it
@@ -40,6 +47,12 @@ with.
 
 ### Security
 
+- **Deleting an account no longer leaves its id on a save still in the queue.** `eraseUser` cleared revision
+  authors and `page.updatedBy` but left the doc store alone, so a draft queued before the deletion was
+  ingested afterwards and wrote the deleted person's UUID into a fresh revision. It now clears `author` on
+  queued drafts, `requestedBy` on deletion requests and `addedBy` on library entries before the tables, and
+  shares a lock with the ingest pass so the two cannot interleave. The content stays; only the field naming
+  the person goes.
 - **A queued save is no longer readable by everyone.** `data.readableBy: anonymous` opened every doc-store
   key, so a draft waiting for the next ingest — an unpublished body and its author's id — could be fetched by
   any visitor, as could pending deletions, ingest receipts and the media library's file names. Those four
