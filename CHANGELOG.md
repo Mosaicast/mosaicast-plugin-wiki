@@ -18,10 +18,11 @@ warned about, and every entry that moves it says so.
 
 ## [0.5.0] — unreleased
 
-`platformApi` moves to **0.18.0** (core **0.7.7** or newer) — mandatory, the host matches on an exact
-`major.minor`, so core 0.7.6 and older refuse this build. The 0.16 minor came out of three test passes, and one
+`platformApi` moves to **0.19.0** (core **0.7.8** or newer) — mandatory, the host matches on an exact
+`major.minor`, so core 0.7.7 and older refuse this build. The 0.16 minor came out of three test passes, and one
 of their findings was this plugin's; 0.17 and 0.18 brought season placement and planned episodes, of which
-the editor uses the second. PF4J moves to **3.16.0** with the SDK (0.16.2), the version core loads plugins
+the editor uses the second; 0.19 puts those plans in a podcaster's episode list and lets `displayMany` answer
+for a whole show. PF4J moves to **3.16.0** with the SDK (0.16.2), the version core loads plugins
 with.
 
 ### Added
@@ -32,9 +33,10 @@ with.
   cites one that is still quiet: readers cannot open it, but its address and the link text are in a page
   anyone can read. A warning, not a refusal — citing early is the author's call. The reader is unchanged on
   purpose: it cannot tell a plan from a missing episode, and must not be able to.
-  Phases are read through `ctx.feeds.displayMany`, which **clamps** at 200 slugs rather than splitting, so
-  the lookup slices (SDK #97). Core 0.7.7 leaves a plan out of a podcaster's `ctx.episodes` (core#258), so
-  today the picker cannot offer one and the warning is what catches a hand-typed citation.
+  Since core 0.7.8 a podcaster's `ctx.episodes` carries their quiet plans (core#258), so the picker offers
+  the episode being prepared, badged; the warning still catches a citation typed by hand. Phases are read
+  with one `ctx.feeds.displayMany` call however long the show — it splits and merges since SDK 0.19.0
+  (core#269), where it used to clamp at 200 and the lookup sliced by hand.
 
 ### Security
 

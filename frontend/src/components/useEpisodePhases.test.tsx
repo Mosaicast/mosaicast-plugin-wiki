@@ -3,7 +3,7 @@
 
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { DISPLAY_BATCH_LIMIT, type PluginContext } from '@mosaicast/plugin-sdk';
 import { makeMockCtx, makeMockFeeds } from '@mosaicast/plugin-sdk/testing';
 import { citedEpisodes, useEpisodePhases } from './useEpisodePhases';
@@ -22,13 +22,12 @@ describe('citedEpisodes', () => {
 });
 
 describe('useEpisodePhases', () => {
-  it('asks in slices, because displayMany clamps at the batch limit instead of splitting', async () => {
-    // `ctx.episodes` is uncapped since core 0.7.6, so a long show's list is longer than one batch, and an
-    // unsliced call would silently drop every episode past the limit -- the quiet plan included.
+  it('finds an episode past the batch limit with one call, because displayMany splits', async () => {
+    // `ctx.episodes` is uncapped since core 0.7.6, so a long show's list is longer than one batch. The host's
+    // client splits it since SDK 0.19.0; a clamp there would silently drop the quiet plan at the end.
     const slugs = Array.from({ length: DISPLAY_BATCH_LIMIT + 50 }, (_, n) => `e${n}`);
     const last = slugs[slugs.length - 1];
     const feeds = makeMockFeeds({ [last]: { title: 'Last', description: '' } }).withPhase(last, 'planned');
-    const displayMany = vi.spyOn(feeds, 'displayMany');
     const ctx = makeMockCtx({ feeds });
     let seen: Record<string, unknown> = {};
     function Probe({ c }: { c: PluginContext }) {
@@ -41,7 +40,7 @@ describe('useEpisodePhases', () => {
     await act(async () => root.render(<Probe c={ctx} />));
     await flush();
 
-    expect(displayMany.mock.calls.map(([batch]) => batch.length)).toEqual([DISPLAY_BATCH_LIMIT, 50]);
+    expect(feeds.batches.map((batch) => batch.length)).toEqual([DISPLAY_BATCH_LIMIT, 50]);
     expect(seen).toEqual({ [last]: { phase: 'planned', title: 'Last' } });
     act(() => root.unmount());
   });

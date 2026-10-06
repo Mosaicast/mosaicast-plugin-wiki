@@ -1105,7 +1105,8 @@ function InsertPicker({
     .filter((episode) => matches(episode.label) || matches(episode.slug))
     .slice(0, PICKER_LIMIT);
   // Only what is on screen, so one request however long the show; a quiet plan is badged before it is cited.
-  // Core leaves a plan out of `ctx.episodes` for now (core#258), so the warning below is what catches one.
+  // A podcaster's `ctx.episodes` carries their quiet plans since core 0.7.8 (core#258), so the badge is the
+  // first thing to catch one; the warning below still catches a citation typed by hand.
   const phases = useEpisodePhases(ctx, kind === 'episode' ? episodes.map((episode) => episode.slug) : []);
 
   const files = library.filter((file) => matches(file.name)).slice(0, PICKER_LIMIT);

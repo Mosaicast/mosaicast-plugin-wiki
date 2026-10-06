@@ -352,7 +352,7 @@ describe('<EditorView>', () => {
   });
 
   it('badges an episode that is planned or upcoming, so a quiet plan is not cited by accident', async () => {
-    // A `planned` episode is in a podcaster's `ctx.episodes` and nobody else's (SDK 0.18.0).
+    // A `planned` episode is in a podcaster's `ctx.episodes` and nobody else's (SDK 0.18.0, core 0.7.8).
     const ctx = ctxFor('the-kraken/edit', {
       episodes: ['s02e01', 's01e09', 's01e02'],
       episodeLabels: { s02e01: 'S02E01 · Next', s01e09: 'S01E09 · Soon', s01e02: 'S01E02 · The Lighthouse' },
@@ -378,8 +378,7 @@ describe('<EditorView>', () => {
 
   it('warns that citing a quiet plan publishes its address, without refusing the save', async () => {
     const ctx = ctxFor('the-kraken/edit', {
-      // Typed by hand: core leaves a quiet plan out of `ctx.episodes` and `episodeLabels` today (core#258),
-      // so the snapshot's own title is what names it.
+      // Typed by hand, so no picker and no `episodeLabels` entry: the snapshot's own title is what names it.
       feeds: makeMockFeeds({ s02e01: { title: 'Next', description: '' } }).withPhase('s02e01', 'planned'),
     });
     await render(ctx);

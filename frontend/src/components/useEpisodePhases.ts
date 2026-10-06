@@ -2,7 +2,7 @@
 // SPDX-FileCopyrightText: 2026 The Mosaicast Authors
 
 import { useEffect, useState } from 'react';
-import { DISPLAY_BATCH_LIMIT, type EpisodePhase, type PluginContext } from '@mosaicast/plugin-sdk';
+import type { EpisodePhase, PluginContext } from '@mosaicast/plugin-sdk';
 
 /** The `[[episode:slug…]]` tokens a body cites, slug only — the same shape `markdown.ts` renders. */
 const EPISODE_TOKEN = /\[\[episode:([^\]|@\s]+)/gi;
@@ -31,10 +31,10 @@ export interface EpisodePlace {
  * the reader deliberately cannot tell "planned" from "not there" (see `EpisodeCards`). The person who can
  * still change the page is the one who needs to know.
  *
- * `displayMany` **clamps** at {@link DISPLAY_BATCH_LIMIT} rather than splitting, so a long list is asked in
- * slices. A snapshot without a `phase` comes from a host older than 0.18, which has no planned episodes; an
- * absent snapshot is something this caller may not see, which is not a plan they can leak either. Both are
- * simply missing from the answer.
+ * One call however long the list: `displayMany` splits at the batch limit and merges since SDK 0.19.0
+ * (core#269) — it clamped before, and this hook sliced by hand. A snapshot without a `phase` would come from a
+ * host without planned episodes; an absent snapshot is something this caller may not see, which is not a plan
+ * they can leak either. Both are simply missing from the answer.
  *
  * @param ctx   the host context
  * @param slugs the episodes to look up; the effect re-runs only when the set changes
@@ -51,21 +51,16 @@ export function useEpisodePhases(ctx: PluginContext, slugs: string[]): Record<st
       return;
     }
     let cancelled = false;
-    const slices: string[][] = [];
-    for (let at = 0; at < wanted.length; at += DISPLAY_BATCH_LIMIT) {
-      slices.push(wanted.slice(at, at + DISPLAY_BATCH_LIMIT));
-    }
-    Promise.all(slices.map((slice) => ctx.feeds.displayMany(slice)))
-      .then((answers) => {
+    ctx.feeds
+      .displayMany(wanted)
+      .then((answer) => {
         if (cancelled) {
           return;
         }
         const found: Record<string, EpisodePlace> = {};
-        for (const answer of answers) {
-          for (const [slug, snapshot] of Object.entries(answer)) {
-            if (snapshot.phase) {
-              found[slug] = { phase: snapshot.phase, title: snapshot.title };
-            }
+        for (const [slug, snapshot] of Object.entries(answer)) {
+          if (snapshot.phase) {
+            found[slug] = { phase: snapshot.phase, title: snapshot.title };
           }
         }
         setPhases(found);
