@@ -195,7 +195,8 @@ missing backlink, never a broken page.
 the write channel — the editor writes `draft:<slug>` and the backend ingests on its schedule. **Saves are
 eventually consistent**: surface that in the UI, never paper over it. Backend-owned keys (`index`, `home`,
 `wikistats`, `ingest:*`) are written in `register()` **and** on the tick. Never reserve
-`draft:*`/`delete:*`/`asset:*` — the client writes those and reserving them would 403 the editor.
+`draft:*`/`delete:*`/`asset:*` — the client writes those and reserving them would 403 the editor. Those
+three and `ingest:*` carry a `podcaster` **read** floor (`data.keyFloors`): a queued draft is unpublished.
 
 ## Releasing
 `scripts/set-version.sh` bumps the plugin's own version in all three files that carry it; `ci.yml` fails if

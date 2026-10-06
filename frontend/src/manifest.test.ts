@@ -2,7 +2,8 @@
 // SPDX-FileCopyrightText: 2026 The Mosaicast Authors
 
 import { describe, expect, it } from 'vitest';
-import { PLATFORM_API_VERSION } from '@mosaicast/plugin-sdk';
+import { PLATFORM_API_VERSION, PROBLEM_TYPES, type PluginDataDeclaration } from '@mosaicast/plugin-sdk';
+import { makeMockDocs } from '@mosaicast/plugin-sdk/testing';
 import manifest from '../../plugin.json';
 import pkg from '../package.json';
 
@@ -37,6 +38,31 @@ describe('plugin.json', () => {
     // Omitting `readableBy` would silently 403 every anonymous visitor — the wiki must be readable by all.
     expect(manifest.data.readableBy).toBe('anonymous');
     expect(manifest.data.writableBy).toBe('podcaster');
+  });
+
+  it('keeps the editor bookkeeping from readers, and the pages open to them', async () => {
+    // `readableBy: anonymous` opened every key, so a queued draft -- an unpublished body and its author's id
+    // -- could be read by anyone until the next tick applied it. Only the editor and `_admin` read these.
+    const data = manifest.data as PluginDataDeclaration;
+    const seeded = {
+      'data/site/main/index': {},
+      'data/site/main/draft:kraken': { markdown: 'not yet' },
+      'data/site/main/delete:kraken': {},
+      'data/site/main/ingest:kraken': { state: 'queued' },
+      'data/site/main/asset:abc-123': { name: 'finale-reveal.png' },
+    };
+
+    for (const viewer of ['anonymous', 'fan'] as const) {
+      const docs = makeMockDocs(seeded, { data, viewer });
+      expect((await docs.list('site')).items.map((item) => item.key)).toEqual(['index']);
+      await expect(docs.get('site', 'draft:kraken')).rejects.toMatchObject({
+        status: 403,
+        problem: { type: PROBLEM_TYPES.keyFloor },
+      });
+    }
+    const editor = makeMockDocs(seeded, { data, viewer: 'podcaster' });
+    expect((await editor.list('site')).items).toHaveLength(5);
+    await editor.put('site', 'draft:kraken', { markdown: 'now' });
   });
 
   it('puts the deep-link page slot at site scope, or /p/wiki/* is a real 404', () => {

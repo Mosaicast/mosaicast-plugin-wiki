@@ -40,6 +40,12 @@ with.
 
 ### Security
 
+- **A queued save is no longer readable by everyone.** `data.readableBy: anonymous` opened every doc-store
+  key, so a draft waiting for the next ingest — an unpublished body and its author's id — could be fetched by
+  any visitor, as could pending deletions, ingest receipts and the media library's file names. Those four
+  prefixes (`draft:*`, `delete:*`, `ingest:*`, `asset:*`) now carry a `podcaster` read floor through
+  `data.keyFloors` (SDK 0.19.0): a fan's or a visitor's listing leaves them out and a direct read is a 403.
+  Only the editor and the dashboard read them, and both already need a podcaster.
 - **A saved page can no longer restyle the site.** Page bodies were sanitised with
   `DOMPurify.sanitize(html, { ADD_ATTR: ['target', 'rel'] })` — DOMPurify's defaults, which allow `<style>` and
   `style=`. Under the plugin contract's `style-src 'unsafe-inline'`, a page containing
