@@ -18,8 +18,9 @@ warned about, and every entry that moves it says so.
 
 ## [0.6.0] — unreleased
 
-`platformApi` moves from 0.17.0 to **0.19.0** (core **0.7.8** or newer). This is mandatory: the host
-matches on an exact `major.minor`, so core 0.7.7 and older refuse this build. 0.18 brought planned episodes,
+`platformApi` moves from 0.17.0 to **0.19.1** (core **0.7.8** or newer). This is mandatory: the host matches on
+an exact `major.minor`, so core 0.7.7 and older refuse this build, and 0.19.1 loads wherever 0.19.0 would.
+0.18 brought planned episodes,
 which the editor now warns about. 0.19 puts those plans in a podcaster's episode list, lets `displayMany`
 answer for a whole show, and adds the per-key read floors and the data export used below.
 
@@ -75,6 +76,9 @@ answer for a whole show, and adds the per-key read floors and the data export us
 - **"Add an image" is reachable by keyboard** (#27, WCAG 2.1.1). It was a `<label>` around a hidden file
   input, neither of them focusable; it is a button now, described by a hint naming the accepted formats, and
   the picker offers only the image types the manifest declares.
+- **Storage sizes use the units core shows** (#29, SDK 0.19.1). The editor and the dashboard read the
+  quota as "268.4 MB" and "0 byte" where core's admin says "256 MiB" for the same limit; the SDK's
+  `i18n.bytes` is binary now, and nothing in the wiki formats a size of its own.
 - **The bar stays inside its gutter at phone width.** A wrapping column sized itself to the search row's
   max-content and ran 17px past the right edge at 375px.
 

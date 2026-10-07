@@ -768,6 +768,18 @@ describe('<EditorView>', () => {
     expect(host.textContent).toMatch(/of .* used/);
   });
 
+  it('states the quota in the binary units core shows for the same limit (#29)', async () => {
+    // The manifest's 268435456 bytes read "268.4 MB" here and "256 MiB" in core's admin until SDK 0.19.1
+    // moved `i18n.bytes` to binary units; nothing in the wiki formats a size of its own.
+    const ctx = ctxFor('the-kraken/edit', {
+      blobs: makeMockBlobs({ quotaBytes: 268_435_456, maxFileBytes: 5_242_880 }),
+    });
+    await render(ctx);
+
+    expect(host.textContent).toContain('0 bytes of 256 MiB used');
+    expect(host.textContent).toContain('up to 5 MiB per file');
+  });
+
   it('uploads a picked file and writes its ref, never its URL, into the body', async () => {
     // The ref is the identity; urlFor is derived at render time. A URL in the body would be a copy of a
     // decision the host is entitled to change.

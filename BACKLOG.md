@@ -58,7 +58,7 @@ stops a duplicate is git refusing to move an existing tag, which is luck rather 
 Tagged 2026-09-17.
 
 ### 3.8 Tag v0.6.0 once the open-issues PR merges — *and read 3.9 first*
-The manifest says **0.6.0** and `platformApi` **0.19.0** (core 0.7.8 or newer). Date the `CHANGELOG.md` heading
+The manifest says **0.6.0** and `platformApi` **0.19.1** (core 0.7.8 or newer). Date the `CHANGELOG.md` heading
 in the release commit, `git tag v0.6.0` **on `master`**, publish the GitHub release; the workflow attaches
 `plugin.tgz` with its digest.
 
@@ -104,13 +104,6 @@ tag. `CLAUDE.md`'s live-testing section follows it.
 
 ---
 
-**Storage sizes: decimal against binary** (#29, the last part of #26). The editor's quota reads "268.4 MB"
-and "0 byte"; core's admin form reads "256 MiB". Both strings come from the SDK's `i18n.bytes`, which is
-decimal **by documented design** ("so the number agrees with what the visitor's file manager showed them").
-That makes it a disagreement between the SDK and core, not a wiki bug. Raised with the SDK on 2026-10-07;
-a wiki-local formatter would be the hand-rolled one `i18n.bytes` exists to replace. #29 stays open until the
-SDK answers.
-
 **The schema surface has no per-row access.** `ctx.schema` reads, like the raw `/api/plugins/wiki/schema/*`
 API, return every row to anyone above `data.readableBy`: a page whose `status` is not `published` (only a
 hand-written draft can have one; the editor always publishes) and every revision. The reader filters, as
@@ -138,6 +131,8 @@ whose every send resolves to an empty recipient list. Revisit only if the wiki g
 
 ## 6. Done
 
+- **Storage sizes in core's units** (#29). The SDK's `i18n.bytes` was decimal by design and core labels MiB;
+  raised with the SDK, which moved to binary in 0.19.1. The wiki only bumped the dependency.
 - **The open issues from the 0.7.2 test passes** (#24–#28). #24, the stored CSS injection, was already fixed
   in 0.5.0 and was confirmed again against core 0.8.0: an anonymous reader gets `<p>Hello <span>overlay</span></p>`
   for a body carrying `<style>` and `style=`. #25 adds *Create the first page* and a *New page* button in the
