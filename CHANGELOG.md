@@ -18,13 +18,34 @@ warned about, and every entry that moves it says so.
 
 ## [0.5.0] — unreleased
 
-`platformApi` moves to **0.17.0** (core **0.7.6** or newer) — mandatory, the host matches on an exact
-`major.minor`, so core 0.7.5 and older refuse this build. The 0.16 minor came out of three test passes, and one
-of their findings was this plugin's; 0.17 adds nothing the wiki calls, but a 0.16 plugin no longer loads on
-0.7.6. PF4J moves to **3.16.0** with the SDK (0.16.2), the version core loads plugins with.
+`platformApi` moves to **0.19.0** (core **0.7.8** or newer) — mandatory, the host matches on an exact
+`major.minor`, so core 0.7.7 and older refuse this build. The 0.16 minor came out of three test passes, and one
+of their findings was this plugin's; 0.17 and 0.18 brought season placement and planned episodes, of which
+the editor uses the second; 0.19 puts those plans in a podcaster's episode list and lets `displayMany` answer
+for a whole show. PF4J moves to **3.16.0** with the SDK (0.16.2), the version core loads plugins
+with.
+
+### Added
+
+- **The editor knows a planned episode from a released one** (SDK 0.18.0). Core 0.7.7 lets a podcaster plan
+  an episode quietly — visible to podcasters and admins, absent for everyone else — and announce it later.
+  The citation picker badges an episode *Not announced* or *Upcoming*, and the body gets a warning when it
+  cites one that is still quiet: readers cannot open it, but its address and the link text are in a page
+  anyone can read. A warning, not a refusal — citing early is the author's call. The reader is unchanged on
+  purpose: it cannot tell a plan from a missing episode, and must not be able to.
+  Since core 0.7.8 a podcaster's `ctx.episodes` carries their quiet plans (core#258), so the picker offers
+  the episode being prepared, badged; the warning still catches a citation typed by hand. Phases are read
+  with one `ctx.feeds.displayMany` call however long the show — it splits and merges since SDK 0.19.0
+  (core#269), where it used to clamp at 200 and the lookup sliced by hand.
 
 ### Security
 
+- **A queued save is no longer readable by everyone.** `data.readableBy: anonymous` opened every doc-store
+  key, so a draft waiting for the next ingest — an unpublished body and its author's id — could be fetched by
+  any visitor, as could pending deletions, ingest receipts and the media library's file names. Those four
+  prefixes (`draft:*`, `delete:*`, `ingest:*`, `asset:*`) now carry a `podcaster` read floor through
+  `data.keyFloors` (SDK 0.19.0): a fan's or a visitor's listing leaves them out and a direct read is a 403.
+  Only the editor and the dashboard read them, and both already need a podcaster.
 - **A saved page can no longer restyle the site.** Page bodies were sanitised with
   `DOMPurify.sanitize(html, { ADD_ATTR: ['target', 'rel'] })` — DOMPurify's defaults, which allow `<style>` and
   `style=`. Under the plugin contract's `style-src 'unsafe-inline'`, a page containing

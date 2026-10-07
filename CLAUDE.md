@@ -12,7 +12,7 @@ Read the first two fully before writing code. Work in plan mode first.
 ### `docs/BRIEF.md` is stale — known corrections
 It predates SDK 0.4.0 and is a read-only spec, so the corrections live here. Where it disagrees with the SDK
 working tree or `mosaicast-plugin-sample`, the latter win.
-- `platformApi` is **`0.17.0`** (core 0.7.6+; exact `major.minor` match; the docs' `"1.x"` does not even
+- `platformApi` is **`0.19.0`** (core 0.7.8+; exact `major.minor` match; the docs' `"1.x"` does not even
   parse). Same string in all four places — `plugin.json`, both gradle coordinates, `package.json` — and **none
   of them is a literal in a test**: `manifest.test.ts` compares against the SDK's own `PLATFORM_API_VERSION`,
   `ci.yml` compares the manifest against both gradle coordinates.
@@ -195,7 +195,8 @@ missing backlink, never a broken page.
 the write channel — the editor writes `draft:<slug>` and the backend ingests on its schedule. **Saves are
 eventually consistent**: surface that in the UI, never paper over it. Backend-owned keys (`index`, `home`,
 `wikistats`, `ingest:*`) are written in `register()` **and** on the tick. Never reserve
-`draft:*`/`delete:*`/`asset:*` — the client writes those and reserving them would 403 the editor.
+`draft:*`/`delete:*`/`asset:*` — the client writes those and reserving them would 403 the editor. Those
+three and `ingest:*` carry a `podcaster` **read** floor (`data.keyFloors`): a queued draft is unpublished.
 
 ## Releasing
 `scripts/set-version.sh` bumps the plugin's own version in all three files that carry it; `ci.yml` fails if

@@ -9,6 +9,7 @@ import {
   makeMockBlobs,
   makeMockCtx,
   makeMockDocs,
+  makeMockFeeds,
   makeMockSchema,
   type MockDocClient,
   makeMockTranslation,
@@ -348,6 +349,61 @@ describe('<EditorView>', () => {
     await type('.wiki__stamp', 'halfway');
 
     expect(host.textContent).toContain('Not a time this reads');
+  });
+
+  it('badges an episode that is planned or upcoming, so a quiet plan is not cited by accident', async () => {
+    // A `planned` episode is in a podcaster's `ctx.episodes` and nobody else's (SDK 0.18.0, core 0.7.8).
+    const ctx = ctxFor('the-kraken/edit', {
+      episodes: ['s02e01', 's01e09', 's01e02'],
+      episodeLabels: { s02e01: 'S02E01 · Next', s01e09: 'S01E09 · Soon', s01e02: 'S01E02 · The Lighthouse' },
+      feeds: makeMockFeeds({
+        s02e01: { title: 'Next', description: '' },
+        s01e09: { title: 'Soon', description: '' },
+        s01e02: { title: 'The Lighthouse', description: '' },
+      })
+        .withPhase('s02e01', 'planned')
+        .withPhase('s01e09', 'upcoming')
+        .withPhase('s01e02', 'released'),
+    });
+    await render(ctx);
+
+    await click('.wiki__upload button:nth-of-type(2)');   // "Cite an episode"
+    await flush();
+
+    const rows = [...host.querySelectorAll('.wiki__pickerlist li')].map((li) => li.textContent);
+    expect(rows[0]).toContain('Not announced');
+    expect(rows[1]).toContain('Upcoming');
+    expect(rows[2]).not.toMatch(/Not announced|Upcoming/);
+  });
+
+  it('warns that citing a quiet plan publishes its address, without refusing the save', async () => {
+    const ctx = ctxFor('the-kraken/edit', {
+      // Typed by hand, so no picker and no `episodeLabels` entry: the snapshot's own title is what names it.
+      feeds: makeMockFeeds({ s02e01: { title: 'Next', description: '' } }).withPhase('s02e01', 'planned'),
+    });
+    await render(ctx);
+
+    await type('#wiki-body', 'Coming: [[episode:s02e01|the next one]].');
+    await flush();
+    expect(host.textContent).toContain('Not announced yet: Next.');
+
+    await submit();
+    expect(docsOf(ctx).stored['data/site/main/draft:the-kraken']).toMatchObject({
+      markdown: 'Coming: [[episode:s02e01|the next one]].',
+    });
+  });
+
+  it('stays quiet about an episode once it is announced', async () => {
+    const ctx = ctxFor('the-kraken/edit', {
+      episodes: ['s02e01'],
+      feeds: makeMockFeeds({ s02e01: { title: 'Next', description: '' } }).withPhase('s02e01', 'upcoming'),
+    });
+    await render(ctx);
+
+    await type('#wiki-body', 'Coming: [[episode:s02e01]].');
+    await flush();
+
+    expect(host.textContent).not.toContain('Not announced yet');
   });
 
   it('files an upload in the library, which is also what keeps it alive', async () => {

@@ -21,6 +21,7 @@ import { defaultContentLocale, isMultilingual, localeName } from '../languages';
 import { peekTranslation, stashTranslation, translatePage, type TranslationDraft } from '../translate';
 import { Icon } from '../icons';
 import { describeApiError } from './useDoc';
+import { citedEpisodes, useEpisodePhases } from './useEpisodePhases';
 
 /** How often to re-read the ingest receipt while a save is queued. */
 /** How many rows a picker shows before searching is the better move than scrolling. */
@@ -92,6 +93,12 @@ export function EditorView({ ctx, i18n, slug, index, go }: EditorViewProps) {
     });
 
   const [save, setSave] = useState<SaveState>({ phase: 'idle' });
+  // A quiet plan (SDK 0.18.0) is visible to this author and to nobody reading the page, yet its slug and the
+  // link text sit in a published body that anyone can read. Saying so is all the editor can do: whether to
+  // cite it early is the author's call, and the reader cannot tell a plan from a missing episode anyway.
+  const cited = useMemo(() => citedEpisodes(markdown), [markdown]);
+  const citedPhases = useEpisodePhases(ctx, cited);
+  const quietCitations = cited.filter((slug) => citedPhases[slug]?.phase === 'planned');
   const [upload, setUpload] = useState<{ busy: boolean; error: string | null }>({ busy: false, error: null });
   const [picker, setPicker] = useState<'page' | 'episode' | 'library' | null>(null);
   const [quota, setQuota] = useState<{ usedBytes: number; quotaBytes: number; maxFileBytes: number } | null>(null);
@@ -757,6 +764,13 @@ export function EditorView({ ctx, i18n, slug, index, go }: EditorViewProps) {
             spellCheck
           />
           <p className="wiki__hint">{i18n.t('editor.syntaxHint')}</p>
+          {quietCitations.length > 0 && (
+            <p className="wiki__error" role="status">
+              {i18n.t('editor.citesQuiet', {
+                episodes: quietCitations.map((slug) => ctx.episodeLabels?.[slug] ?? citedPhases[slug]?.title ?? slug).join(', '),
+              })}
+            </p>
+          )}
 
           <div className="wiki__upload">
             {/* Buttons rather than syntax to memorise: a page slug is guessable, an episode slug is not. */}
@@ -1090,6 +1104,10 @@ function InsertPicker({
     .map((slug) => ({ slug, label: ctx.episodeLabels?.[slug] ?? slug }))
     .filter((episode) => matches(episode.label) || matches(episode.slug))
     .slice(0, PICKER_LIMIT);
+  // Only what is on screen, so one request however long the show; a quiet plan is badged before it is cited.
+  // A podcaster's `ctx.episodes` carries their quiet plans since core 0.7.8 (core#258), so the badge is the
+  // first thing to catch one; the warning below still catches a citation typed by hand.
+  const phases = useEpisodePhases(ctx, kind === 'episode' ? episodes.map((episode) => episode.slug) : []);
 
   const files = library.filter((file) => matches(file.name)).slice(0, PICKER_LIMIT);
 
@@ -1146,6 +1164,11 @@ function InsertPicker({
                 }
               >
                 <span>{episode.label}</span>
+                {(phases[episode.slug]?.phase === 'planned' || phases[episode.slug]?.phase === 'upcoming') && (
+                  <span className={`wiki__phase wiki__phase--${phases[episode.slug].phase}`}>
+                    {i18n.t(`editor.phase.${phases[episode.slug].phase}`)}
+                  </span>
+                )}
                 <code>{episode.slug}</code>
               </button>
             </li>
