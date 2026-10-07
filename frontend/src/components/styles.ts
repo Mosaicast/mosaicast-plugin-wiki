@@ -402,7 +402,9 @@ export const WIKI_CSS = ICON_CSS + `
   /* One narrow-container block, so there is a single place to look for the phone layout. */
   @container (max-width: 30rem) {
     .wiki--page { padding: 1rem .75rem 2rem; }
-    .wiki__bar { flex-direction: column; align-items: stretch; }
+    /* nowrap, or a wrapping column sizes its line to the widest item's max-content rather than to the bar,
+       and the stretched search row ran 17px past the right gutter at 375px. */
+    .wiki__bar { flex-direction: column; flex-wrap: nowrap; align-items: stretch; }
     /* The bar becomes a column here, and in a column flex container flex-basis sizes the HEIGHT — so the
        row layout's "flex: 1 1 16rem" would make the search field 16rem tall instead of 16rem wide. */
     .wiki__search { flex: 0 0 auto; }
