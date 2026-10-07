@@ -16,7 +16,18 @@ warned about, and every entry that moves it says so.
 
 ## [Unreleased]
 
-## [0.6.0] — unreleased
+## [0.6.1] — 2026-10-07
+
+`platformApi` moves to **0.19.1** (SDK 0.19.1), a patch: core matches `major.minor`, so this loads wherever 0.6.0
+does (core 0.7.8 or newer).
+
+### Fixed
+
+- **Storage sizes use the units core shows** (#29). The editor and the dashboard read the quota as "268.4 MB"
+  and "0 byte" where core's admin says "256 MiB" for the same limit. The SDK's `i18n.bytes` is binary as of
+  0.19.1, and nothing in the wiki formats a size of its own.
+
+## [0.6.0] — 2026-10-07
 
 `platformApi` moves from 0.17.0 to **0.19.0** (core **0.7.8** or newer). This is mandatory: the host
 matches on an exact `major.minor`, so core 0.7.7 and older refuse this build. 0.18 brought planned episodes,
