@@ -203,7 +203,9 @@ three and `ingest:*` carry a `podcaster` **read** floor (`data.keyFloors`): a qu
 `scripts/set-version.sh` bumps the plugin's own version in all three files that carry it; `ci.yml` fails if
 they disagree. `release.yml` refuses a tag disagreeing with the manifest, attaches `plugin.tgz` (**the asset
 name is load-bearing**) and appends the SHA-256 an operator pins. `CHANGELOG.md` is the record; the
-`releasing-a-mosaicast-plugin` skill has the order.
+`releasing-a-mosaicast-plugin` skill has the order. **`git fetch --tags` and check the newest tag before
+writing "ships in x.y.z"**: v0.5.0 was released while two PRs still claimed it (BACKLOG 3.9), and no guard
+catches that. `scripts/set-version.sh` does not touch `package-lock.json`'s two root `version` lines.
 
 ## Conventions (binding)
 Java packages `dev.mosaicast.*`, npm scope `@mosaicast`, and imports **only** against the SDK. Tests are

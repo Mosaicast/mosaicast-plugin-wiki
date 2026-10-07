@@ -54,11 +54,26 @@ export function HomeView({ ctx, i18n, index, mayEdit, go }: HomeViewProps) {
   const tags = [...new Set(entries.flatMap(([, s]) => (s.tags ?? '').split(',').filter(Boolean)))].sort();
 
   if (entries.length === 0) {
+    // One h1 in every state, or a screen reader navigating by heading finds nothing and core's route focus
+    // falls back to the landmark (#28). An editor gets the action itself rather than a sentence naming the
+    // role they already have (#25).
     return (
-      <div className="wiki__empty">
-        <p>{i18n.t('home.empty')}</p>
-        <p>{i18n.t('home.emptyHint')}</p>
-      </div>
+      <>
+        <h1 className="wiki__title">{i18n.t('home.title')}</h1>
+        <div className="wiki__empty">
+          <p>{i18n.t('home.empty')}</p>
+          {mayEdit ? (
+            <p>
+              <a className="wiki__btn" href={routeHref({ view: 'new' })} onClick={go({ view: 'new' })}>
+                <Icon name="add" />
+                {i18n.t('home.createFirst')}
+              </a>
+            </p>
+          ) : (
+            <p>{i18n.t('home.emptyHint')}</p>
+          )}
+        </div>
+      </>
     );
   }
 

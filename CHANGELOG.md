@@ -16,14 +16,12 @@ warned about, and every entry that moves it says so.
 
 ## [Unreleased]
 
-## [0.5.0] — unreleased
+## [0.6.0] — unreleased
 
-`platformApi` moves to **0.19.0** (core **0.7.8** or newer) — mandatory, the host matches on an exact
-`major.minor`, so core 0.7.7 and older refuse this build. The 0.16 minor came out of three test passes, and one
-of their findings was this plugin's; 0.17 and 0.18 brought season placement and planned episodes, of which
-the editor uses the second; 0.19 puts those plans in a podcaster's episode list and lets `displayMany` answer
-for a whole show. PF4J moves to **3.16.0** with the SDK (0.16.2), the version core loads plugins
-with.
+`platformApi` moves from 0.17.0 to **0.19.0** (core **0.7.8** or newer). This is mandatory: the host
+matches on an exact `major.minor`, so core 0.7.7 and older refuse this build. 0.18 brought planned episodes,
+which the editor now warns about. 0.19 puts those plans in a podcaster's episode list, lets `displayMany`
+answer for a whole show, and adds the per-key read floors and the data export used below.
 
 ### Added
 
@@ -59,12 +57,42 @@ with.
   prefixes (`draft:*`, `delete:*`, `ingest:*`, `asset:*`) now carry a `podcaster` read floor through
   `data.keyFloors` (SDK 0.19.0): a fan's or a visitor's listing leaves them out and a direct read is a 403.
   Only the editor and the dashboard read them, and both already need a podcaster.
+
+### Fixed
+
+- **An editor can create a page from the page** (#25). An empty wiki told a podcaster "A podcaster can
+  create the first page." and offered no control; the host menu was the only way in, and it is missing until
+  the plugin registry loads after a first login. The empty state now has a *Create the first page* button for
+  anyone who can write, and the bar carries *New page* on every view but the editor.
+- **The empty wiki has a heading** (#28), so heading navigation and core's route focus find one.
+- **A deletion reports itself as one** (#26). It said "The wiki refused this save." and then succeeded: every
+  receipt state other than ok/conflict read as a refusal, `deleted` included. A deletion now says *Queued for
+  deletion* and resolves on its `deleted` receipt; a save never does, which also stops a page re-created at a
+  deleted address failing on the spot.
+- **"A few seconds" is now the real wait** (#26). The backend publishes its ingest period in `wikistats`,
+  and the queued message names it ("every 30 seconds"). The poll timeout follows it as well, so a long
+  interval no longer gives up first.
+- **"Add an image" is reachable by keyboard** (#27, WCAG 2.1.1). It was a `<label>` around a hidden file
+  input, neither of them focusable; it is a button now, described by a hint naming the accepted formats, and
+  the picker offers only the image types the manifest declares.
+- **The bar stays inside its gutter at phone width.** A wrapping column sized itself to the search row's
+  max-content and ran 17px past the right edge at 375px.
+
+## [0.5.0] — 2026-10-02
+
+`platformApi` moves to **0.17.0** (core **0.7.6** or newer) — mandatory, the host matches on an exact
+`major.minor`, so core 0.7.5 and older refuse this build. The 0.16 minor came out of three test passes, and one
+of their findings was this plugin's; 0.17 adds nothing the wiki calls, but a 0.16 plugin no longer loads on
+0.7.6. PF4J moves to **3.16.0** with the SDK (0.16.2), the version core loads plugins with.
+
+### Security
+
 - **A saved page can no longer restyle the site.** Page bodies were sanitised with
   `DOMPurify.sanitize(html, { ADD_ATTR: ['target', 'rel'] })` — DOMPurify's defaults, which allow `<style>` and
   `style=`. Under the plugin contract's `style-src 'unsafe-inline'`, a page containing
   `<style>:host{position:fixed;inset:0;background:red;z-index:99999}</style>` covered the whole site for every
   reader, anonymous included, and made the Save button unclickable even for its author; the same primitive
-  reaches CSS exfiltration of form values (audit SEC-C07). Everything an author writes now goes through
+  reaches CSS exfiltration of form values (audit SEC-C07, #24). Everything an author writes now goes through
   **`ctx.sanitize`**, the host's own feed-HTML policy. The wiki's own tokens (links, episode citations, sized
   images) need attributes that policy rightly refuses an author, so they are swapped for placeholder words
   before parsing and put back — into text nodes only — after sanitising; an author can no longer set `class`,

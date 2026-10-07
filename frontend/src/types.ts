@@ -152,6 +152,8 @@ export interface WikiStats {
   orphans: number;
   brokenLinks: number;
   pendingDrafts: number;
+  /** The ingest period in seconds; absent from a backend older than 0.5.0. */
+  ingestIntervalSeconds?: number;
 }
 
 /** Backend-owned doc keys. Declared in `plugin.json` under `data.backendOwned` — read-only to a client. */

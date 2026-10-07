@@ -58,6 +58,11 @@ export const WIKI_CSS = ICON_CSS + `
     font: inherit; cursor: pointer;
   }
   .wiki__btn--ghost { color: var(--mc-text); background: transparent; border-color: var(--mc-border); }
+  /* A route is a link, so a create action styled as a button is an <a>; \`.wiki a\` would otherwise outrank it
+     and paint link-coloured text on the accent fill. */
+  .wiki a.wiki__btn { color: var(--mc-accent-contrast); text-decoration: none; }
+  .wiki a.wiki__btn--ghost { color: var(--mc-text); }
+  .wiki a.wiki__btn:focus-visible { outline: 2px solid var(--mc-accent-text); outline-offset: 2px; }
   .wiki__title { margin: 0 0 .25rem; font-size: 1.5rem; line-height: 1.25; }
   .wiki__meta { margin: 0 0 1rem; color: var(--mc-text-muted); font-size: .875rem; }
   /* A contributor: the avatar the host generates for every account, and the name it resolves now — never
@@ -397,7 +402,9 @@ export const WIKI_CSS = ICON_CSS + `
   /* One narrow-container block, so there is a single place to look for the phone layout. */
   @container (max-width: 30rem) {
     .wiki--page { padding: 1rem .75rem 2rem; }
-    .wiki__bar { flex-direction: column; align-items: stretch; }
+    /* nowrap, or a wrapping column sizes its line to the widest item's max-content rather than to the bar,
+       and the stretched search row ran 17px past the right gutter at 375px. */
+    .wiki__bar { flex-direction: column; flex-wrap: nowrap; align-items: stretch; }
     /* The bar becomes a column here, and in a column flex container flex-basis sizes the HEIGHT — so the
        row layout's "flex: 1 1 16rem" would make the search field 16rem tall instead of 16rem wide. */
     .wiki__search { flex: 0 0 auto; }

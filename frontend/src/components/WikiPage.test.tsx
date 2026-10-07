@@ -6,7 +6,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { makeMockCtx, makeMockDocs } from '@mosaicast/plugin-sdk/testing';
 import { WikiPage } from './WikiPage';
-import { flush } from '../test-utils';
+import { flush, mockUser } from '../test-utils';
 
 /**
  * Component tests against `makeMockCtx`, the SDK's own double — preferred over a hand-rolled context
@@ -51,6 +51,43 @@ describe('<WikiPage>', () => {
 
     expect(host.textContent).toContain('No pages yet.');
     expect(ctx.logs).toEqual([]);
+  });
+
+  it('gives the empty wiki a heading and offers an editor the action, not a sentence naming their role', async () => {
+    // #25 and #28: a podcaster read "A podcaster can create the first page" with no control, and the empty
+    // state had no h1 for a screen reader to land on.
+    const ctx = makeMockCtx({ user: mockUser('u-pod', 'podcaster'), docs: makeMockDocs({ 'data/site/main/index': {} }) });
+
+    await render(ctx);
+
+    expect(host.querySelectorAll('h1')).toHaveLength(1);
+    const create = [...host.querySelectorAll<HTMLAnchorElement>('.wiki__empty a')].find((a) =>
+      /Create the first page/.test(a.textContent ?? ''),
+    );
+    expect(create?.getAttribute('href')).toMatch(/_new$/);
+    expect(host.textContent).not.toContain('A podcaster can create');
+  });
+
+  it('keeps the sentence for a reader who cannot write, under the same heading', async () => {
+    const ctx = makeMockCtx({ user: mockUser('u-fan', 'fan'), docs: makeMockDocs({ 'data/site/main/index': {} }) });
+
+    await render(ctx);
+
+    expect(host.querySelectorAll('h1')).toHaveLength(1);
+    expect(host.textContent).toContain('A podcaster can create the first page.');
+    expect(host.textContent).not.toContain('Create the first page');
+    expect(host.querySelector('.wiki__new')).toBeNull();
+  });
+
+  it('offers a new page from the bar on every view but the editor', async () => {
+    const index = { 'data/site/main/index': { 'the-kraken': { title: 'The Kraken', summary: '', tags: '' } } };
+    const podcaster = mockUser('u-pod', 'podcaster');
+
+    await render(makeMockCtx({ user: podcaster, route: { path: '_all' }, docs: makeMockDocs(index) }));
+    expect(host.querySelector('.wiki__new')?.getAttribute('href')).toMatch(/_new$/);
+
+    await render(makeMockCtx({ user: podcaster, route: { path: '_new' }, docs: makeMockDocs(index) }));
+    expect(host.querySelector('.wiki__new')).toBeNull();
   });
 
   it('treats a missing index document as empty, not as a failure', async () => {

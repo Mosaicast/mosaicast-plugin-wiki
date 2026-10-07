@@ -16,6 +16,7 @@ import {
   type MockSchemaClient,
 } from '@mosaicast/plugin-sdk/testing';
 import { WikiPage } from './WikiPage';
+import { formatInterval, pollTimeoutMs } from './EditorView';
 import { flush, mockUser } from '../test-utils';
 import { clearTranslation, peekTranslation } from '../translate';
 
@@ -632,6 +633,106 @@ describe('<EditorView>', () => {
     expect('data/site/main/delete:the-kraken' in docsOf(ctx).stored).toBe(true);
   });
 
+  const clickDelete = async () => {
+    const remove = [...host.querySelectorAll('button')].find((b) => /Delete page/.test(b.textContent ?? ''))!;
+    await act(async () => {
+      remove.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    await flush();
+  };
+
+  it('opens the file picker from a focusable button, so an image can be added by keyboard (#27)', async () => {
+    const ctx = ctxFor('the-kraken/edit');
+    await render(ctx);
+
+    const add = [...host.querySelectorAll<HTMLButtonElement>('.wiki__upload button')].find((b) =>
+      /Add an image/.test(b.textContent ?? ''),
+    )!;
+    expect(add).toBeDefined();
+    expect(add.closest('label')).toBeNull();
+    const input = host.querySelector<HTMLInputElement>('input[type="file"]')!;
+    const opened = vi.spyOn(input, 'click');
+
+    add.focus();
+    expect(host.ownerDocument.activeElement).toBe(add);
+    add.click();
+
+    expect(opened).toHaveBeenCalled();
+    expect(input.accept).toBe('image/png,image/jpeg,image/webp,image/gif');
+    expect(host.querySelector(`#${add.getAttribute('aria-describedby')}`)?.textContent).toContain('PNG');
+  });
+
+  it('reports a deletion as deleted once the queue runs, never as a rejection (#26)', async () => {
+    vi.useFakeTimers();
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const ctx = ctxFor('the-kraken/edit', {
+      apiResponses: { 'data/site/main/ingest:the-kraken': { state: 'deleted', detail: null, revisionNo: null } },
+    });
+    await render(ctx);
+    await clickDelete();
+    expect(host.textContent).toContain('Queued for deletion.');
+
+    await act(async () => {
+      vi.advanceTimersByTime(2_500);
+    });
+    await flush();
+
+    expect(host.textContent).toContain('Deleted.');
+    expect(host.textContent).not.toContain('refused');
+  });
+
+  it('keeps a deletion queued while the receipt is still the last save', async () => {
+    vi.useFakeTimers();
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const ctx = ctxFor('the-kraken/edit', {
+      apiResponses: { 'data/site/main/ingest:the-kraken': { state: 'ok', detail: null, revisionNo: 1 } },
+    });
+    await render(ctx);
+    await clickDelete();
+
+    await act(async () => {
+      vi.advanceTimersByTime(6_500);
+    });
+    await flush();
+
+    expect(host.textContent).toContain('Queued for deletion.');
+    expect(host.textContent).not.toContain('Saved.');
+  });
+
+  it('does not read a deleted page\'s old receipt as a refusal of the page saved at its address', async () => {
+    vi.useFakeTimers();
+    const ctx = ctxFor('_new', {
+      apiResponses: { 'data/site/main/ingest:deep-sea': { state: 'deleted', detail: null, revisionNo: null } },
+    });
+    await render(ctx);
+    await type('#wiki-title', 'Deep Sea');
+    await type('#wiki-body', 'Dark.');
+    await submit();
+
+    await act(async () => {
+      vi.advanceTimersByTime(6_500);
+    });
+    await flush();
+
+    expect(host.textContent).toContain('Queued.');
+    expect(host.textContent).not.toContain('refused');
+  });
+
+  it('says how long a queued save takes, from the period the backend publishes', async () => {
+    const ctx = ctxFor('the-kraken/edit', {
+      docs: makeMockDocs({
+        'data/site/main/index': INDEX,
+        'data/site/main/wikistats': { pages: 1, orphans: 0, brokenLinks: 0, pendingDrafts: 0, ingestIntervalSeconds: 45 },
+      }),
+    });
+    await render(ctx);
+    await type('#wiki-body', 'Changed.');
+    await submit();
+
+    expect(host.textContent).toContain('applies saves every 45 seconds');
+    expect(host.textContent).not.toContain('a few seconds');
+  });
+
   it('does not delete when the confirmation is declined', async () => {
     const ctx = ctxFor('the-kraken/edit');
     vi.spyOn(window, 'confirm').mockReturnValue(false);
@@ -829,5 +930,23 @@ describe('<HistoryView> and <RevisionView>', () => {
     const after = host.querySelector('textarea') as HTMLTextAreaElement;
     expect(after).toBe(body);            // not remounted
     expect(after.value).toBe(typed);     // not overwritten by the stored body
+  });
+});
+
+describe('formatInterval', () => {
+  it('words the ingest period in the largest unit that keeps it readable', () => {
+    expect(formatInterval(30, 'en')).toBe('30 seconds');
+    expect(formatInterval(300, 'en')).toBe('5 minutes');
+    expect(formatInterval(86_400, 'en')).toBe('24 hours');
+    expect(formatInterval(30, 'de')).toBe('30 Sekunden');
+  });
+});
+
+describe('pollTimeoutMs', () => {
+  it('outlasts two ingest periods, within two and fifteen minutes', () => {
+    expect(pollTimeoutMs(null)).toBe(120_000);
+    expect(pollTimeoutMs(30)).toBe(120_000);
+    expect(pollTimeoutMs(300)).toBe(615_000);
+    expect(pollTimeoutMs(86_400)).toBe(900_000);
   });
 });
