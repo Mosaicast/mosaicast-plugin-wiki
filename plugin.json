@@ -1,6 +1,6 @@
 {
   "id": "wiki",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "platformApi": "0.19.1",
   "name": "Wiki",
   "license": "AGPL-3.0-or-later",

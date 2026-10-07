@@ -57,10 +57,10 @@ stops a duplicate is git refusing to move an existing tag, which is luck rather 
 ### ~~3.6 Tag v0.4.0 once the 0.15.0 PR merges~~ — done
 Tagged 2026-09-17.
 
-### 3.8 Tag v0.6.0 once #34 merges
-The release commit (CHANGELOG dated 2026-10-07) rides in #34. After the merge: `git tag v0.6.0` **on
-`master`**, push the tag, publish the GitHub release; the workflow attaches `plugin.tgz` with its digest.
-Manifest **0.6.0**, `platformApi` **0.19.1** (core 0.7.8 or newer).
+### 3.8 Tag v0.6.1 once #34 merges
+The release commit (CHANGELOG `[0.6.1]` dated 2026-10-07) rides in #34. After the merge: `git tag v0.6.1`
+**on `master`**, push the tag, publish the GitHub release; the workflow attaches `plugin.tgz` with its
+digest. Manifest **0.6.1**, `platformApi` **0.19.1** (core 0.7.8 or newer).
 
 ### 3.9 Two PRs merged under a version that was already released
 **v0.5.0 was tagged and released on 2026-10-02** at #30's merge (platformApi 0.17.0). #31 (platformApi 0.19.0,
@@ -68,6 +68,10 @@ key floors) and #32 (the GDPR handler) were then written and merged *still decla
 CHANGELOG heading that said "0.5.0 — unreleased", so for a while `master` held different code under a version
 an operator could already pin. The release's own CHANGELOG said "unreleased" too: 3.5's dating failure again.
 Fixed by bumping to 0.6.0 and splitting the CHANGELOG, with `[0.5.0]` restored to exactly what the tag shipped.
+
+**It happened again the same day.** v0.6.0 was tagged at #33's merge, and #34 went on to add a "release 0.6.0"
+commit dating a heading that was already shipped. Caught before merging, and moved to 0.6.1. The check below
+has to run again **immediately before** writing a release commit, not once per session.
 
 **Run `git tag --contains` (or `git tag | sort -V | tail -1`) before writing "lands in x.y.z".** Neither
 guard catches this: `release.yml` compares a new tag against the manifest, and CI compares the manifest's
