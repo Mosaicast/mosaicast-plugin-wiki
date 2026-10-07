@@ -10,17 +10,19 @@ import {
   assetKey,
   deleteKey,
   draftKey,
+  KEY_STATS,
   SITE_PATH,
   type AssetDoc,
   type IngestReceipt,
   type PageRow,
   type PageSummary,
+  type WikiStats,
 } from '../types';
 import type { PluginI18n } from '../i18n';
 import { defaultContentLocale, isMultilingual, localeName } from '../languages';
 import { peekTranslation, stashTranslation, translatePage, type TranslationDraft } from '../translate';
 import { Icon } from '../icons';
-import { describeApiError } from './useDoc';
+import { describeApiError, useSiteDoc } from './useDoc';
 import { citedEpisodes, useEpisodePhases } from './useEpisodePhases';
 
 /** How often to re-read the ingest receipt while a save is queued. */
@@ -29,14 +31,46 @@ const PICKER_LIMIT = 40;
 
 const POLL_MS = 2_000;
 
-/** How long to keep polling before saying so. The backend tick is configurable, so this is generous. */
-const POLL_TIMEOUT_MS = 120_000;
+/**
+ * How long to keep polling before saying so: two ingest periods and some slack, but never under two minutes
+ * (a period the backend has not published yet) nor over fifteen (a day-long period is no reason to poll all
+ * day; the save is not lost either way).
+ *
+ * @param intervalSeconds the ingest period from `wikistats`, when known
+ */
+export function pollTimeoutMs(intervalSeconds: number | null): number {
+  const wanted = intervalSeconds == null ? 0 : intervalSeconds * 2_000 + 15_000;
+  return Math.min(15 * 60_000, Math.max(120_000, wanted));
+}
+
+/**
+ * The ingest period in words for the active locale — "30 seconds", "5 minutes", "2 hours" — through
+ * `Intl.NumberFormat`'s unit style, so German gets "30 Sekunden" without a plural table of our own.
+ *
+ * @param seconds the ingest period
+ * @param locale  the active locale
+ */
+export function formatInterval(seconds: number, locale: string): string {
+  const [value, unit] =
+    seconds >= 7_200 ? [Math.round(seconds / 3_600), 'hour'] :
+    seconds >= 120 ? [Math.round(seconds / 60), 'minute'] :
+    [seconds, 'second'];
+  try {
+    return new Intl.NumberFormat(locale, { style: 'unit', unit, unitDisplay: 'long' }).format(value);
+  } catch {
+    return `${value} ${unit}${value === 1 ? '' : 's'}`;
+  }
+}
 
 /** What the save button is currently doing. */
+/** A save writes a draft; a deletion writes a tombstone. Each resolves on a different receipt. */
+type QueuedKind = 'save' | 'delete';
+
 type SaveState =
   | { phase: 'idle' }
-  | { phase: 'queued' }
+  | { phase: 'queued'; kind: QueuedKind }
   | { phase: 'saved'; revisionNo: number | null }
+  | { phase: 'deleted' }
   | { phase: 'conflict'; detail: string | null }
   | { phase: 'rejected'; detail: string | null }
   | { phase: 'timeout' }
@@ -106,6 +140,8 @@ export function EditorView({ ctx, i18n, slug, index, go }: EditorViewProps) {
   const bodyRef = useRef<HTMLTextAreaElement>(null);
   const previewRef = useRef<HTMLDivElement>(null);
   const pollRef = useRef<number | null>(null);
+  // The ingest period, so "queued" can say how long rather than "a few seconds" when it is 30 (#26).
+  const ingestInterval = useSiteDoc<WikiStats>(ctx, KEY_STATS).data?.ingestIntervalSeconds ?? null;
 
   const targetSlug = isNew ? newSlug : slug;
 
@@ -403,7 +439,7 @@ export function EditorView({ ctx, i18n, slug, index, go }: EditorViewProps) {
       return;
     }
 
-    setSave({ phase: 'queued' });
+    setSave({ phase: 'queued', kind: 'save' });
     try {
       await ctx.docs.put('site', draftKey(slugToWrite), {
         title: title.trim(),
@@ -422,12 +458,20 @@ export function EditorView({ ctx, i18n, slug, index, go }: EditorViewProps) {
       setSave({ phase: 'failed' });
       return;
     }
-    pollReceipt(slugToWrite);
+    pollReceipt(slugToWrite, 'save');
   };
 
-  /** Watches the receipt the backend leaves for this slug, which is how a queued save resolves. */
-  const pollReceipt = (slugToWatch: string) => {
+  /**
+   * Watches the receipt the backend leaves for this slug, which is how a queued save or deletion resolves.
+   *
+   * **Each kind waits for its own answer.** A deletion resolves only on a `deleted` receipt, and a save never
+   * does: the slug's previous receipt is still there when the poll starts, and reading a `deleted` one as a
+   * refusal is what made a successful deletion report "rejected" and a page re-created at a deleted slug
+   * fail on the spot (#26).
+   */
+  const pollReceipt = (slugToWatch: string, kind: QueuedKind) => {
     const started = Date.now();
+    const timeout = pollTimeoutMs(ingestInterval);
     if (pollRef.current != null) {
       window.clearInterval(pollRef.current);
     }
@@ -441,11 +485,18 @@ export function EditorView({ ctx, i18n, slug, index, go }: EditorViewProps) {
       } catch {
         receipt = null; // no receipt yet is the normal state right after a save
       }
-      const fresh = receipt && (!baseRevisionNo || (receipt.revisionNo ?? 0) > baseRevisionNo || receipt.state !== 'ok');
+      const fresh =
+        receipt &&
+        (kind === 'delete'
+          ? receipt.state === 'deleted'
+          : receipt.state !== 'deleted' &&
+            (!baseRevisionNo || (receipt.revisionNo ?? 0) > baseRevisionNo || receipt.state !== 'ok'));
       if (receipt && fresh) {
         window.clearInterval(pollRef.current!);
         pollRef.current = null;
-        if (receipt.state === 'ok') {
+        if (kind === 'delete') {
+          setSave({ phase: 'deleted' });
+        } else if (receipt.state === 'ok') {
           setSave({ phase: 'saved', revisionNo: receipt.revisionNo ?? null });
           setBaseRevisionNo(receipt.revisionNo ?? baseRevisionNo);
         } else if (receipt.state === 'conflict') {
@@ -455,7 +506,7 @@ export function EditorView({ ctx, i18n, slug, index, go }: EditorViewProps) {
         }
         return;
       }
-      if (Date.now() - started > POLL_TIMEOUT_MS) {
+      if (Date.now() - started > timeout) {
         window.clearInterval(pollRef.current!);
         pollRef.current = null;
         setSave({ phase: 'timeout' });
@@ -518,11 +569,11 @@ export function EditorView({ ctx, i18n, slug, index, go }: EditorViewProps) {
     if (isNew || !slug) {
       return;
     }
-    setSave({ phase: 'queued' });
+    setSave({ phase: 'queued', kind: 'delete' });
     try {
       // A tombstone, not a delete: the cascade across four entities is the backend's to run.
       await ctx.docs.put('site', deleteKey(slug), { requestedBy: ctx.user?.id ?? null });
-      pollReceipt(slug);
+      pollReceipt(slug, 'delete');
     } catch (error: unknown) {
       ctx.log('warn', `wiki: delete could not be requested: ${String(error)}`);
       setSave({ phase: 'failed' });
@@ -886,7 +937,7 @@ export function EditorView({ ctx, i18n, slug, index, go }: EditorViewProps) {
         />
       </div>
 
-      <SaveStatus i18n={i18n} state={save} slug={savedSlug ?? ''} go={go} />
+      <SaveStatus i18n={i18n} state={save} slug={savedSlug ?? ''} interval={ingestInterval} go={go} />
 
       <div className="wiki__actions">
         <button className="wiki__btn" type="submit" disabled={save.phase === 'queued'}>
@@ -922,21 +973,38 @@ function SaveStatus({
   i18n,
   state,
   slug,
+  interval,
   go,
 }: {
   i18n: PluginI18n;
   state: SaveState;
   slug: string;
+  /** The ingest period in seconds, or null before `wikistats` has answered (or from an older backend). */
+  interval: number | null;
   go(route: WikiRoute): (event: MouseEvent | React.MouseEvent) => void;
 }) {
   switch (state.phase) {
     case 'idle':
       return null;
-    case 'queued':
+    case 'queued': {
+      const key = state.kind === 'delete' ? 'editor.deleteQueued' : 'editor.queued';
       return (
         <p className="wiki__status" role="status">
           <Icon name="clock" />
-          {i18n.t('editor.queued')}
+          {interval == null
+            ? i18n.t(key)
+            : i18n.t(`${key}Every`, { interval: formatInterval(interval, i18n.locale) })}
+        </p>
+      );
+    }
+    case 'deleted':
+      return (
+        <p className="wiki__status wiki__status--ok" role="status">
+          <Icon name="check" />
+          {i18n.t('editor.deleted')}{' '}
+          <a href={routeHref({ view: 'home' })} onClick={go({ view: 'home' })}>
+            {i18n.t('editor.backToWiki')}
+          </a>
         </p>
       );
     case 'saved':

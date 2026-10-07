@@ -235,6 +235,16 @@ class WikiIngestTest {
     }
 
     @Test
+    void publishesTheIngestPeriodSoTheEditorCanSayHowLongASaveTakes() {
+        // The browser cannot read plugin config, and "a few seconds" was 30 s on a default install (#26).
+        var ctx = ctx(schema(), new MapPluginConfig().with("ingestIntervalSeconds", 90));
+        new WikiPlugin().register(ctx);
+
+        var stats = ctx.store().get(Scope.site(), WikiPlugin.KEY_STATS, WikiPlugin.WikiStats.class).orElseThrow();
+        assertEquals(90, stats.ingestIntervalSeconds());
+    }
+
+    @Test
     void prunesRevisionsPastTheConfiguredNumber() {
         var schema = schema();
         var ctx = ctx(schema, new MapPluginConfig().with("revisionsKept", 2));

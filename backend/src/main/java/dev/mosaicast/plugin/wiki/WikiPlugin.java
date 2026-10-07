@@ -734,7 +734,7 @@ public class WikiPlugin implements PluginBackend, ShareMetadataProvider, Sitemap
     private WikiStats buildStats() {
         SchemaStore schema = ctx.schema();
         if (schema == null) {
-            return new WikiStats(0, 0, 0, 0);
+            return new WikiStats(0, 0, 0, 0, ingestIntervalSeconds());
         }
         long pages = schema.count("page", Criteria.all());
         List<PageRow> all = schema.select("page", Criteria.all(), PageRow.class);
@@ -750,7 +750,7 @@ public class WikiPlugin implements PluginBackend, ShareMetadataProvider, Sitemap
                 .filter(target -> all.stream().noneMatch(page -> page.slug().equals(target)))
                 .count();
         long pending = ctx.store().query(Scope.site(), DRAFT_PREFIX).size();
-        return new WikiStats(pages, orphans, broken, pending);
+        return new WikiStats(pages, orphans, broken, pending, ingestIntervalSeconds());
     }
 
     // --- the host's extension points ------------------------------------------------------------------
@@ -1248,6 +1248,9 @@ public class WikiPlugin implements PluginBackend, ShareMetadataProvider, Sitemap
     record PageSummary(String title, String summary, String tags, String updatedAt, String locale,
                        String translationOf) {}
 
-    /** The counters the podcaster dashboard shows. */
-    record WikiStats(long pages, long orphans, long brokenLinks, long pendingDrafts) {}
+    /**
+     * The counters the podcaster dashboard shows, and the ingest period. The browser has no read of plugin
+     * config, and the editor needs the period to say how long a queued save takes rather than guessing.
+     */
+    record WikiStats(long pages, long orphans, long brokenLinks, long pendingDrafts, int ingestIntervalSeconds) {}
 }
