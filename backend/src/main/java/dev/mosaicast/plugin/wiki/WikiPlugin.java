@@ -8,6 +8,7 @@ import dev.mosaicast.plugin.api.Criteria;
 import dev.mosaicast.plugin.api.Criteria.Direction;
 import dev.mosaicast.plugin.api.Criteria.Op;
 import dev.mosaicast.plugin.api.DocEntry;
+import dev.mosaicast.plugin.api.ExportFile;
 import dev.mosaicast.plugin.api.Locales;
 import dev.mosaicast.plugin.api.OgMeta;
 import dev.mosaicast.plugin.api.PageRouteProvider;
@@ -22,6 +23,8 @@ import dev.mosaicast.plugin.api.ShareMetadataProvider;
 import dev.mosaicast.plugin.api.SitemapProvider;
 import dev.mosaicast.plugin.api.SitemapUrl;
 import dev.mosaicast.plugin.api.UserDataHandler;
+import dev.mosaicast.plugin.api.UserExport;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -39,6 +42,8 @@ import java.util.HashSet;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.pf4j.Extension;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * The wiki's backend: the only writer of relational truth for this plugin (ARCHITECTURE §7.6).
@@ -123,6 +128,18 @@ public class WikiPlugin implements PluginBackend, ShareMetadataProvider, Sitemap
     /** How many files one sweep looks at. A wiki's library is small; this bounds a pathological one. */
     private static final int BLOB_PAGE = 200;
 
+    /**
+     * How much revision text one person's export carries, in UTF-8 bytes before JSON escaping.
+     *
+     * <p>A quarter of the host's cap, because escaping can double a body (every newline and quote) and the
+     * metadata and the other files need room too. Past it the newest bodies are kept and older revisions
+     * export without theirs — still listed, so nothing the person wrote goes unmentioned.
+     */
+    static final long EXPORT_BODY_BUDGET = UserExport.MAX_BYTES / 4;
+
+    /** The export writes JSON through the Jackson the SDK exposes; the contract never serialises for us. */
+    private static final ObjectMapper JSON = JsonMapper.builder().build();
+
     private PluginContext ctx;
 
     @Override
@@ -158,8 +175,14 @@ public class WikiPlugin implements PluginBackend, ShareMetadataProvider, Sitemap
         return Math.max(1, ctx.config().get("ingestIntervalSeconds", Integer.class, DEFAULT_INGEST_SECONDS));
     }
 
-    /** One scheduled pass: apply what the browser wrote, then refresh what the browser reads. */
-    void tick() {
+    /**
+     * One scheduled pass: apply what the browser wrote, then refresh what the browser reads.
+     *
+     * <p>{@code synchronized} with {@link #eraseUser(String)}: a pass that read a deleted person's queued
+     * draft before the erasure scrubbed it would otherwise write their id into a new revision after the
+     * erasure cleared the old ones.
+     */
+    synchronized void tick() {
         try {
             ingestDrafts();
             applyDeletions();
@@ -977,9 +1000,18 @@ public class WikiPlugin implements PluginBackend, ShareMetadataProvider, Sitemap
      * needs.
      */
     @Override
-    public void eraseUser(String userId) {
-        SchemaStore schema = ctx == null ? null : ctx.schema();
-        if (schema == null || userId == null || userId.isBlank()) {
+    public synchronized void eraseUser(String userId) {
+        if (ctx == null || userId == null || userId.isBlank()) {
+            return;
+        }
+        // The doc store first: a queued draft carries its author, and the next pass would write that id into
+        // a fresh revision -- re-creating the very link this call cuts. Drafts, deletion requests and library
+        // entries keep their content; only the field naming the person goes.
+        scrubPerson(DRAFT_PREFIX, "author", userId);
+        scrubPerson(DELETE_PREFIX, "requestedBy", userId);
+        scrubPerson(ASSET_PREFIX, "addedBy", userId);
+        SchemaStore schema = ctx.schema();
+        if (schema == null) {
             return;
         }
         Map<String, Object> cleared = new HashMap<>();
@@ -997,8 +1029,157 @@ public class WikiPlugin implements PluginBackend, ShareMetadataProvider, Sitemap
         ctx.logger().info("wiki: cleared the identity link on contributions by a deleted account");
     }
 
+    /** Nulls {@code field} in every site document under {@code prefix} whose value is this person's id. */
+    @SuppressWarnings("unchecked")
+    private void scrubPerson(String prefix, String field, String userId) {
+        for (DocEntry entry : ctx.store().query(Scope.site(), prefix)) {
+            Map<String, Object> doc = ctx.store().get(Scope.site(), entry.key(), Map.class).orElse(null);
+            if (doc != null && userId.equals(doc.get(field))) {
+                Map<String, Object> scrubbed = new LinkedHashMap<>(doc);
+                scrubbed.put(field, null);
+                ctx.store().put(Scope.site(), entry.key(), scrubbed);
+            }
+        }
+    }
+
+    /**
+     * A person's part of their data export (GDPR Art. 15 and 20): what they wrote here, in a file another
+     * tool can read back.
+     *
+     * <p>A revision's {@code author} is a site-scoped UUID, and that is still this person — {@code ctx.users}
+     * turns it into their name. So {@code revisions.json} lists every retained revision they authored with
+     * its text, newest first; {@code uploads.json} the media-library entries they filed (the entries, not the
+     * files, which stay reachable at their public address); {@code queued.json} a save or deletion still
+     * waiting for the next pass. A file is left out when it would be empty, and nothing at all is
+     * {@link Optional#empty()} — the host then records "no data", which is the truth for a reader who never
+     * edited.
+     *
+     * <p>Revisions past {@code revisionsKept} were pruned before anyone asked, so they are not here: the
+     * export describes what the wiki holds, not what it once did.
+     */
+    @Override
+    public Optional<UserExport> exportFiles(String userId) {
+        if (ctx == null || userId == null || userId.isBlank()) {
+            return Optional.empty();
+        }
+        List<ExportFile> files = new ArrayList<>();
+        SchemaStore schema = ctx.schema();
+        if (schema != null) {
+            exportRevisions(schema, userId).ifPresent(files::add);
+        }
+        exportUploads(userId).ifPresent(files::add);
+        exportQueued(userId).ifPresent(files::add);
+        return files.isEmpty() ? Optional.empty() : Optional.of(new UserExport(files));
+    }
+
+    private Optional<ExportFile> exportRevisions(SchemaStore schema, String userId) {
+        List<RevisionRow> revisions = new ArrayList<>(schema.select("revision",
+                Criteria.where("author", Op.EQ, userId), RevisionRow.class));
+        List<String> lastEditorOf = schema.select("page", Criteria.where("updatedBy", Op.EQ, userId), PageRow.class)
+                .stream().map(PageRow::slug).sorted().toList();
+        if (revisions.isEmpty() && lastEditorOf.isEmpty()) {
+            return Optional.empty();
+        }
+        revisions.sort(Comparator.comparing(RevisionRow::createdAt, Comparator.nullsFirst(Comparator.naturalOrder()))
+                .reversed());
+
+        List<Map<String, Object>> entries = new ArrayList<>();
+        long budget = EXPORT_BODY_BUDGET;
+        int omitted = 0;
+        for (RevisionRow revision : revisions) {
+            Map<String, Object> entry = new LinkedHashMap<>();
+            entry.put("page", revision.pageSlug());
+            entry.put("revisionNo", revision.revisionNo());
+            entry.put("createdAt", revision.createdAt() == null ? null : revision.createdAt().toString());
+            entry.put("title", revision.title());
+            entry.put("comment", blankToNull(revision.comment()));
+            String markdown = revision.markdown() == null ? "" : revision.markdown();
+            long size = markdown.getBytes(StandardCharsets.UTF_8).length;
+            if (size <= budget) {
+                entry.put("markdown", markdown);
+                budget -= size;
+            } else {
+                entry.put("markdownOmitted", true);
+                omitted++;
+            }
+            entries.add(entry);
+        }
+
+        Map<String, Object> doc = new LinkedHashMap<>();
+        doc.put("format", "mosaicast-wiki-revisions/1");
+        doc.put("revisions", entries);
+        doc.put("lastEditorOf", lastEditorOf);
+        if (omitted > 0) {
+            doc.put("markdownOmitted", omitted);
+        }
+        return Optional.of(jsonFile("revisions.json", doc));
+    }
+
+    @SuppressWarnings("unchecked")
+    private Optional<ExportFile> exportUploads(String userId) {
+        List<Map<String, Object>> uploads = new ArrayList<>();
+        for (DocEntry entry : ctx.store().query(Scope.site(), ASSET_PREFIX)) {
+            Map<String, Object> asset = ctx.store().get(Scope.site(), entry.key(), Map.class).orElse(null);
+            if (asset != null && userId.equals(asset.get("addedBy"))) {
+                Map<String, Object> upload = new LinkedHashMap<>();
+                upload.put("ref", entry.key().substring(ASSET_PREFIX.length()));
+                upload.put("name", asset.get("name"));
+                upload.put("mime", asset.get("mime"));
+                upload.put("addedAt", asset.get("at"));
+                uploads.add(upload);
+            }
+        }
+        if (uploads.isEmpty()) {
+            return Optional.empty();
+        }
+        Map<String, Object> doc = new LinkedHashMap<>();
+        doc.put("format", "mosaicast-wiki-uploads/1");
+        doc.put("uploads", uploads);
+        return Optional.of(jsonFile("uploads.json", doc));
+    }
+
+    @SuppressWarnings("unchecked")
+    private Optional<ExportFile> exportQueued(String userId) {
+        List<Map<String, Object>> drafts = new ArrayList<>();
+        for (DocEntry entry : ctx.store().query(Scope.site(), DRAFT_PREFIX)) {
+            Map<String, Object> draft = ctx.store().get(Scope.site(), entry.key(), Map.class).orElse(null);
+            if (draft != null && userId.equals(draft.get("author"))) {
+                Map<String, Object> queued = new LinkedHashMap<>();
+                queued.put("page", entry.key().substring(DRAFT_PREFIX.length()));
+                queued.put("title", draft.get("title"));
+                queued.put("comment", draft.get("comment"));
+                queued.put("markdown", draft.get("markdown"));
+                drafts.add(queued);
+            }
+        }
+        List<String> deletions = new ArrayList<>();
+        for (DocEntry entry : ctx.store().query(Scope.site(), DELETE_PREFIX)) {
+            Map<String, Object> request = ctx.store().get(Scope.site(), entry.key(), Map.class).orElse(null);
+            if (request != null && userId.equals(request.get("requestedBy"))) {
+                deletions.add(entry.key().substring(DELETE_PREFIX.length()));
+            }
+        }
+        if (drafts.isEmpty() && deletions.isEmpty()) {
+            return Optional.empty();
+        }
+        Map<String, Object> doc = new LinkedHashMap<>();
+        doc.put("format", "mosaicast-wiki-queued/1");
+        doc.put("drafts", drafts);
+        doc.put("deletions", deletions);
+        return Optional.of(jsonFile("queued.json", doc));
+    }
+
+    private static ExportFile jsonFile(String path, Object doc) {
+        return new ExportFile(path, "application/json",
+                JSON.writerWithDefaultPrettyPrinter().writeValueAsBytes(doc));
+    }
+
     /** Only the parts of a {@code revision} row the erasure touches. */
     record RevisionAuthor(long id, String pageSlug, String author) {}
+
+    /** A {@code revision} row as a person's export reports it. */
+    record RevisionRow(long id, String pageSlug, Long revisionNo, String title, String markdown, String comment,
+                       String author, Instant createdAt) {}
 
     // --- helpers --------------------------------------------------------------------------------------
 
