@@ -66,6 +66,18 @@ export function WikiPage({ ctx }: { ctx: PluginContext }) {
             {i18n.t('wiki')}
           </a>
           <SearchBox ctx={ctx} placeholder={i18n.t('search.placeholder')} submit={i18n.t('search.submit')} />
+          {/* On the page, not only in the host menu: that entry is the one other way in, and it is absent
+              until the plugin registry loads after a first login (#25). */}
+          {mayEdit && route.view !== 'new' && route.view !== 'edit' ? (
+            <a
+              className="wiki__btn wiki__btn--ghost wiki__new"
+              href={routeHref({ view: 'new' })}
+              onClick={go({ view: 'new' })}
+            >
+              <Icon name="add" />
+              {i18n.t('newPage')}
+            </a>
+          ) : null}
         </div>
 
         {index.loading && <p className="wiki__meta">{i18n.t('loading')}</p>}

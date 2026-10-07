@@ -39,6 +39,7 @@ import { iconCss } from '@mosaicast/plugin-sdk';
  * SDK's `KnownIconName` catches a name core does not publish.
  */
 export const ICON_NAMES = [
+  'add',
   'arrow-left',
   'check',
   'clock',
