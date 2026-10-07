@@ -49,6 +49,7 @@
   "editor.image.badWidth": "Widths are a number of pixels (320) or a share of the column (50%).",
   "editor.image.width": "Width",
   "editor.image.widthHint": "320 or 50%",
+  "editor.imageFormats": "Images: PNG, JPEG, WebP or GIF.",
   "editor.insertEpisode": "Cite an episode",
   "editor.insertLibrary": "From the library",
   "editor.insertPage": "Link a page",

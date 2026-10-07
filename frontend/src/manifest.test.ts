@@ -4,6 +4,7 @@
 import { describe, expect, it } from 'vitest';
 import { PLATFORM_API_VERSION, PROBLEM_TYPES, type PluginDataDeclaration } from '@mosaicast/plugin-sdk';
 import { makeMockDocs } from '@mosaicast/plugin-sdk/testing';
+import { IMAGE_TYPES } from './components/EditorView';
 import manifest from '../../plugin.json';
 import pkg from '../package.json';
 
@@ -63,6 +64,13 @@ describe('plugin.json', () => {
     const editor = makeMockDocs(seeded, { data, viewer: 'podcaster' });
     expect((await editor.list('site')).items).toHaveLength(5);
     await editor.put('site', 'draft:kraken', { markdown: 'now' });
+  });
+
+  it('declares every image type the editor offers to upload', () => {
+    // The picker's `accept` is a hint the host does not read; the manifest is what the upload is held to.
+    for (const type of IMAGE_TYPES) {
+      expect(manifest.blobs.mimeTypes).toContain(type);
+    }
   });
 
   it('puts the deep-link page slot at site scope, or /p/wiki/* is a real 404', () => {

@@ -25,6 +25,12 @@ import { Icon } from '../icons';
 import { describeApiError, useSiteDoc } from './useDoc';
 import { citedEpisodes, useEpisodePhases } from './useEpisodePhases';
 
+/**
+ * The image types the editor uploads: the manifest's `blobs.mimeTypes` minus PDF, which the body cannot
+ * show as an image. A manifest test keeps every entry here declared there.
+ */
+export const IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'] as const;
+
 /** How often to re-read the ingest receipt while a save is queued. */
 /** How many rows a picker shows before searching is the better move than scrolling. */
 const PICKER_LIMIT = 40;
@@ -138,6 +144,7 @@ export function EditorView({ ctx, i18n, slug, index, go }: EditorViewProps) {
   const [quota, setQuota] = useState<{ usedBytes: number; quotaBytes: number; maxFileBytes: number } | null>(null);
   const [vocabulary, setVocabulary] = useState<{ tag: string; label: string }[]>([]);
   const bodyRef = useRef<HTMLTextAreaElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
   const previewRef = useRef<HTMLDivElement>(null);
   const pollRef = useRef<number | null>(null);
   // The ingest period, so "queued" can say how long rather than "a few seconds" when it is 30 (#26).
@@ -852,11 +859,29 @@ export function EditorView({ ctx, i18n, slug, index, go }: EditorViewProps) {
               </button>
             )}
             {ctx.blobs && (
-              <label className="wiki__btn wiki__btn--ghost">
-                <Icon name="upload" />
-                {upload.busy ? i18n.t('editor.uploading') : i18n.t('editor.addImage')}
-                <input type="file" accept="image/*" hidden onChange={onPickFile} disabled={upload.busy} />
-              </label>
+              <>
+                {/* A real button: a <label> is not focusable and a hidden input is out of the tab order, so
+                    the old label-wrapped input could not be reached by keyboard at all (#27, WCAG 2.1.1). */}
+                <button
+                  type="button"
+                  className="wiki__btn wiki__btn--ghost"
+                  aria-describedby="wiki-image-formats"
+                  disabled={upload.busy}
+                  onClick={() => fileRef.current?.click()}
+                >
+                  <Icon name="upload" />
+                  {upload.busy ? i18n.t('editor.uploading') : i18n.t('editor.addImage')}
+                </button>
+                <input
+                  ref={fileRef}
+                  type="file"
+                  accept={IMAGE_TYPES.join(',')}
+                  hidden
+                  tabIndex={-1}
+                  onChange={onPickFile}
+                  disabled={upload.busy}
+                />
+              </>
             )}
           </div>
 
@@ -902,6 +927,11 @@ export function EditorView({ ctx, i18n, slug, index, go }: EditorViewProps) {
             />
           )}
 
+          {ctx.blobs && (
+            <p className="wiki__hint" id="wiki-image-formats">
+              {i18n.t('editor.imageFormats')}
+            </p>
+          )}
           {quota && (
             <p className="wiki__hint">
               {i18n.t('editor.quota', {

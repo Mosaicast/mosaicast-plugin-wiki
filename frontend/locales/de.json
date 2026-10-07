@@ -49,6 +49,7 @@
   "editor.image.badWidth": "Breiten sind Pixel (320) oder ein Anteil der Spalte (50%).",
   "editor.image.width": "Breite",
   "editor.image.widthHint": "320 oder 50%",
+  "editor.imageFormats": "Bilder: PNG, JPEG, WebP oder GIF.",
   "editor.insertEpisode": "Folge zitieren",
   "editor.insertLibrary": "Aus der Mediathek",
   "editor.insertPage": "Seite verlinken",

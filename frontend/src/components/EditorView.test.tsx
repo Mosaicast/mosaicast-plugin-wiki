@@ -641,6 +641,27 @@ describe('<EditorView>', () => {
     await flush();
   };
 
+  it('opens the file picker from a focusable button, so an image can be added by keyboard (#27)', async () => {
+    const ctx = ctxFor('the-kraken/edit');
+    await render(ctx);
+
+    const add = [...host.querySelectorAll<HTMLButtonElement>('.wiki__upload button')].find((b) =>
+      /Add an image/.test(b.textContent ?? ''),
+    )!;
+    expect(add).toBeDefined();
+    expect(add.closest('label')).toBeNull();
+    const input = host.querySelector<HTMLInputElement>('input[type="file"]')!;
+    const opened = vi.spyOn(input, 'click');
+
+    add.focus();
+    expect(host.ownerDocument.activeElement).toBe(add);
+    add.click();
+
+    expect(opened).toHaveBeenCalled();
+    expect(input.accept).toBe('image/png,image/jpeg,image/webp,image/gif');
+    expect(host.querySelector(`#${add.getAttribute('aria-describedby')}`)?.textContent).toContain('PNG');
+  });
+
   it('reports a deletion as deleted once the queue runs, never as a rejection (#26)', async () => {
     vi.useFakeTimers();
     vi.spyOn(window, 'confirm').mockReturnValue(true);
