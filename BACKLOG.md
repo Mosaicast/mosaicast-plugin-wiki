@@ -54,13 +54,28 @@ under a version an operator can already pin. Worth noting that `release.yml` wou
 its guard compares the tag against the manifest, and `v0.1.0` against a `0.1.0` manifest agrees. What
 stops a duplicate is git refusing to move an existing tag, which is luck rather than a check.
 
-### 3.6 Tag v0.4.0 once the 0.15.0 PR merges
-The branch bumps the manifest to **0.4.0** and `platformApi` to **0.15.0** (core 0.7.2 or newer). Date the
-`CHANGELOG.md` heading in the release commit, `git tag v0.4.0` **on `master`**, publish the GitHub release,
-and the workflow attaches `plugin.tgz` with its digest.
+### ~~3.6 Tag v0.4.0 once the 0.15.0 PR merges~~ — done
+Tagged 2026-09-17.
+
+### 3.8 Tag v0.6.0 once the open-issues PR merges — *and read 3.9 first*
+The manifest says **0.6.0** and `platformApi` **0.19.0** (core 0.7.8 or newer). Date the `CHANGELOG.md` heading
+in the release commit, `git tag v0.6.0` **on `master`**, publish the GitHub release; the workflow attaches
+`plugin.tgz` with its digest.
+
+### 3.9 Two PRs merged under a version that was already released
+**v0.5.0 was tagged and released on 2026-10-02** at #30's merge (platformApi 0.17.0). #31 (platformApi 0.19.0,
+key floors) and #32 (the GDPR handler) were then written and merged *still declaring 0.5.0*, with a
+CHANGELOG heading that said "0.5.0 — unreleased", so for a while `master` held different code under a version
+an operator could already pin. The release's own CHANGELOG said "unreleased" too: 3.5's dating failure again.
+Fixed by bumping to 0.6.0 and splitting the CHANGELOG, with `[0.5.0]` restored to exactly what the tag shipped.
+
+**Run `git tag --contains` (or `git tag | sort -V | tail -1`) before writing "lands in x.y.z".** Neither
+guard catches this: `release.yml` compares a new tag against the manifest, and CI compares the manifest's
+three copies against each other. A check that fails when the manifest's version is already a tag on an
+ancestor of `HEAD` would.
 
 ### 3.7 CLAUDE.md is over the length guidance again — *small*
-215 lines against the ~200 the file asks for, which is where 2.3 left it. This round added two invariants
+223 lines now (it was 215) against the ~200 the file asks for, which is where 2.3 left it. This round added two invariants
 and deleted two settled BRIEF corrections plus a Guardrails paragraph the file elsewhere says it does not
 repeat, so it is net flat rather than growing. The remaining fat is not obvious: the six live-testing traps,
 the npm lockfile ritual and the translation masking rules were each paid for in real debugging. Cut only
@@ -71,8 +86,8 @@ with something concrete to point at.
 for the first time. `scripts/set-version.sh` moves the plugin's own version in all three files that carry it
 and CI fails when they disagree; `CHANGELOG.md` is the record.
 
-### 3.3 Dependabot PR #16 is open
-`actions/setup-java` 5.7.0 → 6.0.0. Core already took the same bump.
+### ~~3.3 Dependabot PR #16 is open~~ — done
+Superseded: `actions/setup-java` went to 6.0.1 in #23.
 
 ### ~~3.4 README's hero image is from phase 1~~ — done
 `hero-wiki-{light,dark}-1280.png`, captured against core 0.6.24: the title row with its language menu, a
@@ -88,6 +103,20 @@ resolved wiki link. The phase-1 images stay in the folder — earlier PRs link t
 tag. `CLAUDE.md`'s live-testing section follows it.
 
 ---
+
+**Storage sizes: decimal against binary** (#29, the last part of #26). The editor's quota reads "268.4 MB"
+and "0 byte"; core's admin form reads "256 MiB". Both strings come from the SDK's `i18n.bytes`, which is
+decimal **by documented design** ("so the number agrees with what the visitor's file manager showed them").
+That makes it a disagreement between the SDK and core, not a wiki bug. Raised with the SDK on 2026-10-07;
+a wiki-local formatter would be the hand-rolled one `i18n.bytes` exists to replace. #29 stays open until the
+SDK answers.
+
+**The schema surface has no per-row access.** `ctx.schema` reads, like the raw `/api/plugins/wiki/schema/*`
+API, return every row to anyone above `data.readableBy`: a page whose `status` is not `published` (only a
+hand-written draft can have one; the editor always publishes) and every revision. The reader filters, as
+"Access is per row" in CLAUDE.md says, but the HTTP surface does not. `storage.schemaReadableBy` (SDK 0.19.0)
+cannot help, because the anonymous reader needs the surface. Not filed yet: it needs a host-side row filter,
+which is a design question for core.
 
 ## 5. Decided against
 
@@ -109,6 +138,14 @@ whose every send resolves to an empty recipient list. Revisit only if the wiki g
 
 ## 6. Done
 
+- **The open issues from the 0.7.2 test passes** (#24–#28). #24, the stored CSS injection, was already fixed
+  in 0.5.0 and was confirmed again against core 0.8.0: an anonymous reader gets `<p>Hello <span>overlay</span></p>`
+  for a body carrying `<style>` and `style=`. #25 adds *Create the first page* and a *New page* button in the
+  bar; #26 makes a deletion report as one and names the real ingest wait; #27 makes the image upload a
+  focusable button; #28 gives the empty wiki an h1. #29 is listed in §4.
+- **A person's data export, and an erasure that reaches the queue** (core 0.8.0). See CHANGELOG 0.6.0.
+- **Per-key read floors** (SDK 0.19.0 `data.keyFloors`): queued drafts, deletions, receipts and library entries
+  are no longer readable by anonymous visitors.
 - **A saved ingest interval is honoured** (SDK 0.15.0 `onSchedule(Supplier<Duration>, …)`). The period was
   read once in `register()` and held for the life of the process, so a podcaster who saved a new value was
   told it worked and went on waiting the old one until core restarted — and it is the number deciding how
