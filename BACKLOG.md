@@ -57,10 +57,10 @@ stops a duplicate is git refusing to move an existing tag, which is luck rather 
 ### ~~3.6 Tag v0.4.0 once the 0.15.0 PR merges~~ — done
 Tagged 2026-09-17.
 
-### 3.8 Tag v0.6.0 once the open-issues PR merges — *and read 3.9 first*
-The manifest says **0.6.0** and `platformApi` **0.19.1** (core 0.7.8 or newer). Date the `CHANGELOG.md` heading
-in the release commit, `git tag v0.6.0` **on `master`**, publish the GitHub release; the workflow attaches
-`plugin.tgz` with its digest.
+### 3.8 Tag v0.6.0 once #34 merges
+The release commit (CHANGELOG dated 2026-10-07) rides in #34. After the merge: `git tag v0.6.0` **on
+`master`**, push the tag, publish the GitHub release; the workflow attaches `plugin.tgz` with its digest.
+Manifest **0.6.0**, `platformApi` **0.19.1** (core 0.7.8 or newer).
 
 ### 3.9 Two PRs merged under a version that was already released
 **v0.5.0 was tagged and released on 2026-10-02** at #30's merge (platformApi 0.17.0). #31 (platformApi 0.19.0,

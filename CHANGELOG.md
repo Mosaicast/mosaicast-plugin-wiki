@@ -16,7 +16,7 @@ warned about, and every entry that moves it says so.
 
 ## [Unreleased]
 
-## [0.6.0] — unreleased
+## [0.6.0] — 2026-10-07
 
 `platformApi` moves from 0.17.0 to **0.19.1** (core **0.7.8** or newer). This is mandatory: the host matches on
 an exact `major.minor`, so core 0.7.7 and older refuse this build, and 0.19.1 loads wherever 0.19.0 would.
