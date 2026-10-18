@@ -97,7 +97,7 @@ describe('<WikiPage> — reader', () => {
 
     await render(ctx);
 
-    expect(host.textContent).toContain('This page does not exist yet.');
+    expect(host.textContent).toContain("This page doesn't exist yet.");
     expect(host.textContent).not.toContain('Half written');
   });
 
@@ -224,7 +224,7 @@ describe('<WikiPage> — reader', () => {
 
     await render(ctx);
 
-    expect(host.textContent).toContain('This page does not exist yet.');
+    expect(host.textContent).toContain("This page doesn't exist yet.");
   });
 
   it('marks a link to an unwritten page as missing', async () => {
