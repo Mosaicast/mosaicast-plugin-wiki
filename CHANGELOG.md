@@ -16,6 +16,14 @@ warned about, and every entry that moves it says so.
 
 ## [Unreleased]
 
+## [0.6.2] — 2026-10-18
+
+### Changed
+- **Every reader, editor and admin text follows the suite's writing guide.** Shorter, plainer English and
+  German, no dashes between clauses, no explanations a reader doesn't act on, contractions in English, and
+  neutral German words instead of gendered ones. The settings descriptions in `plugin.json` too. Keys and
+  placeholders are unchanged. `platformApi` stays 0.19.1.
+
 ## [0.6.1] — 2026-10-07
 
 `platformApi` moves to **0.19.1** (SDK 0.19.1), a patch: core matches `major.minor`, so this loads wherever 0.6.0

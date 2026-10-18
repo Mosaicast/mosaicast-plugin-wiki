@@ -261,7 +261,7 @@ describe('<EditorView>', () => {
 
     const button = host.querySelector<HTMLButtonElement>('.wiki__translate button');
     expect(button?.disabled).toBe(true);
-    expect(host.textContent).toContain('no translation provider configured');
+    expect(host.textContent).toContain('no translation service set up');
   });
 
   it('translates into the language asked for, and saves none of it', async () => {
@@ -288,7 +288,7 @@ describe('<EditorView>', () => {
     await pick('#wiki-translate-target', 'de');
     await click('.wiki__translate button');
 
-    expect(host.textContent).toContain('not allowed to use');
+    expect(host.textContent).toContain("can't use this site's translation service");
     expect(host.querySelector('.wiki__machine')).toBeNull();
   });
 
@@ -349,7 +349,7 @@ describe('<EditorView>', () => {
     await click('.wiki__upload button:nth-of-type(2)');
     await type('.wiki__stamp', 'halfway');
 
-    expect(host.textContent).toContain('Not a time this reads');
+    expect(host.textContent).toContain("That time doesn't work");
   });
 
   it('badges an episode that is planned or upcoming, so a quiet plan is not cited by accident', async () => {
@@ -729,7 +729,7 @@ describe('<EditorView>', () => {
     await type('#wiki-body', 'Changed.');
     await submit();
 
-    expect(host.textContent).toContain('applies saves every 45 seconds');
+    expect(host.textContent).toContain('saves every 45 seconds');
     expect(host.textContent).not.toContain('a few seconds');
   });
 
@@ -826,7 +826,7 @@ describe('<EditorView>', () => {
     });
     await flush();
 
-    expect(host.textContent).toContain('That file type cannot be stored here.');
+    expect(host.textContent).toContain("That file type can't be stored here.");
     expect(host.querySelector<HTMLTextAreaElement>('#wiki-body')!.value).not.toContain('blob:');
   });
 

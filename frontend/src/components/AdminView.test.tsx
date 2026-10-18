@@ -77,7 +77,7 @@ describe('<AdminView>', () => {
 
     await render(ctx);
 
-    expect(host.textContent).toContain('Links to pages that do not exist');
+    expect(host.textContent).toContain("Links to pages that don't exist");
     expect(host.textContent).toContain('Glossary');
     expect(host.textContent).toContain('nowhere');
   });
@@ -88,7 +88,7 @@ describe('<AdminView>', () => {
     await render(ctx);
 
     const broken = [...host.querySelectorAll('.wiki__section')].find((s) =>
-      s.textContent?.includes('Links to pages that do not exist'),
+      s.textContent?.includes("Links to pages that don't exist"),
     );
     expect(broken?.textContent).not.toContain('The Kraken');
   });
