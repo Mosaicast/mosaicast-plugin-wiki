@@ -12,7 +12,7 @@ Read the first two fully before writing code. Work in plan mode first.
 ### `docs/BRIEF.md` is stale — known corrections
 It predates SDK 0.4.0 and is a read-only spec, so the corrections live here. Where it disagrees with the SDK
 working tree or `mosaicast-plugin-sample`, the latter win.
-- `platformApi` is **`0.19.1`** (core 0.7.8+; exact `major.minor` match; the docs' `"1.x"` does not even
+- `platformApi` is **`0.20.0`** (core 0.10.0+; exact `major.minor` match; the docs' `"1.x"` does not even
   parse). Same string in all four places — `plugin.json`, both gradle coordinates, `package.json` — and **none
   of them is a literal in a test**: `manifest.test.ts` compares against the SDK's own `PLATFORM_API_VERSION`,
   `ci.yml` compares the manifest against both gradle coordinates.
@@ -29,9 +29,10 @@ what is particular to this repo:
 - **The `?t=` grammar is shared** (§6.4): `WikiMarkdown.seconds` and `markdown.ts#parseTimestamp` are the
   *third and fourth* implementations of core's (`754`, `12:04`, `1:02:03`, `1h02m03s`, `90m`; bounded
   fields, 24 h cap, unreadable dropped). Change all four together or none.
-- **No request-time backend hook** (§7.6) — hence the draft/ingest write path, and why every invariant lives
-  in `ingestOne`. **Unknown subpaths are a real 404**: `hasRoute` answers, and **the empty subpath is our own
-  root** — a lookup over slugs alone 404s the landing page.
+- **Saves still go through draft/ingest**, so every invariant lives in `ingestOne`. Since 0.20.0 actions
+  (§7.9) are a request-time hook, and the wiki doesn't use them yet (BACKLOG 2.4). **Unknown subpaths are
+  a real 404**: `hasRoute` answers, and **the empty subpath is our own root**, so a lookup over slugs alone
+  404s the landing page.
 - **Every language control here comes from `content()`, never `available()`**, and `isContentLocale`
   validates on ingest: the browser's list is a hint, what reaches storage is input.
 - **`ctx.users` names the ids this plugin stores** (`identity` in the manifest; `null` without it).
