@@ -16,6 +16,21 @@ warned about, and every entry that moves it says so.
 
 ## [Unreleased]
 
+## [0.7.0] — 2026-10-23
+
+`platformApi` moves to **0.20.0** (core **0.10.0** or newer, tested on 0.11.1). You have to update: the host
+matches `major.minor` exactly, so core 0.9 and older refuse this build, and a 0.19 build no longer loads on a
+0.20 host. 0.20 adds actions, channels and timers. The wiki doesn't use them yet, so nothing else changes for
+readers or editors.
+
+### Changed
+
+- **The SDK comes from Maven Central.** The backend build needs only `mavenCentral()` now. The GitHub
+  Packages repository, its `read:packages` token and the token env in CI and the release workflow are gone.
+- **`docs/ARCHITECTURE.md` is core's v0.11.1 copy**, unchanged. It adds realtime actions and channels
+  (§7.9), and §7.6 now names actions as the request-time hook the wiki's draft-and-ingest save path was
+  built without.
+
 ## [0.6.2] — 2026-10-18
 
 ### Changed

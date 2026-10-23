@@ -35,6 +35,16 @@ while missing `home`.
 
 ---
 
+### 2.4 Save through an action, and show who else is editing — *the next feature*
+SDK 0.20.0 / core 0.10.0 added **actions** (§7.9): a request-time call the backend answers, with
+`call.caller()` from the host and a per-name `callableBy` floor. That is the hook the draft/ingest path was
+built without (§7.6). `ctx.actions.call("save", page)` could check slug uniqueness and the base revision,
+append the revision in `ctx.schema()` and answer with the saved row, and the "queued, applies every 30
+seconds" state would go away. Keep the tick for what is genuinely periodic (orphan sweep, revision pruning,
+projections), and decide whether drafts stay as a fallback. **Channels** could add "someone else is editing
+this page" without storing anything. Both need `eraseUser`/`exportFiles` and the key floors re-checked, and
+the receipt poll and its tests replaced. Not started: 0.7.0 is the plain platform update.
+
 ## 3. Release and hygiene
 
 ### ~~3.1 The branch has never been merged~~ — done
@@ -57,10 +67,10 @@ stops a duplicate is git refusing to move an existing tag, which is luck rather 
 ### ~~3.6 Tag v0.4.0 once the 0.15.0 PR merges~~ — done
 Tagged 2026-09-17.
 
-### 3.8 Tag v0.6.1 once #34 merges
-The release commit (CHANGELOG `[0.6.1]` dated 2026-10-07) rides in #34. After the merge: `git tag v0.6.1`
-**on `master`**, push the tag, publish the GitHub release; the workflow attaches `plugin.tgz` with its
-digest. Manifest **0.6.1**, `platformApi` **0.19.1** (core 0.7.8 or newer).
+### 3.8 Tag v0.7.0 once the platformApi 0.20.0 PR merges
+The release commit (CHANGELOG `[0.7.0]` dated 2026-10-23) rides in that PR. After the merge: `git tag v0.7.0`
+**on `master`**, push the tag, publish the GitHub release. Manifest **0.7.0**, `platformApi` **0.20.0** (core
+0.10.0 or newer). v0.6.1 and v0.6.2 are tagged.
 
 ### 3.9 Two PRs merged under a version that was already released
 **v0.5.0 was tagged and released on 2026-10-02** at #30's merge (platformApi 0.17.0). #31 (platformApi 0.19.0,
